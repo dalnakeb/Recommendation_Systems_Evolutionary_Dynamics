@@ -1,0 +1,2 @@
+setuptools==68.2.2
+pathlib==1.0.1
