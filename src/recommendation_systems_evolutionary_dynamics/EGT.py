@@ -211,7 +211,7 @@ class Game:
         self._Ns = Ns  # Population sizes for each sector
         self._n = len(Ns)  # Number of sectors
         self._fractionss = copy.deepcopy(fractionss)
-        # Assume binary strategies; derive strategies from the first fraction list length.
+        # Derive strategies from the first fraction list length.
         self._strategies = list(range(len(fractionss[0])))
 
         # Initialize populations for each sector.
@@ -226,8 +226,7 @@ class Game:
     def _parse_payoff_matrix(self, payoff_matrix: dict) -> bool:
         if not isinstance(payoff_matrix, dict):
             return False
-        # Retain the original condition (though note it is a bit unusual).
-        if len(payoff_matrix) == 2 ** self._n:
+        if len(payoff_matrix) != 2 ** self._n:
             return False
 
         # Validate keys and values.
@@ -266,18 +265,18 @@ class Game:
         x, y, z are the fraction of strategy 1 in the three sectors: public, private, and civil.
         """
         P = self._payoff_matrix
-        sector_lower = sector.lower()
-        if sector_lower == "public":
+        sector = sector.lower()
+        if sector == "public":
             return (y * z * P[(strategy, 1, 1)][0] +
                     (1 - y) * z * P[(strategy, 0, 1)][0] +
                     y * (1 - z) * P[(strategy, 1, 0)][0] +
                     (1 - y) * (1 - z) * P[(strategy, 0, 0)][0])
-        elif sector_lower == "private":
+        elif sector == "private":
             return (x * z * P[(1, strategy, 1)][1] +
                     (1 - x) * z * P[(0, strategy, 1)][1] +
                     x * (1 - z) * P[(1, strategy, 0)][1] +
                     (1 - x) * (1 - z) * P[(0, strategy, 0)][1])
-        elif sector_lower == "civil":
+        elif sector == "civil":
             return (x * y * P[(1, 1, strategy)][2] +
                     (1 - x) * y * P[(0, 1, strategy)][2] +
                     x * (1 - y) * P[(1, 0, strategy)][2] +
@@ -318,24 +317,24 @@ class Game:
 
     def _compute_trans_matrix(self, beta):
         """
-            Compute the 8x8 transition matrix (m) for the monomorphic states.
+        Compute the 8x8 transition matrix (m) for the monomorphic states.
 
-            The state space is given by all triplets in {0,1}^3 representing the strategy in
-            the public, private, and civil sectors respectively.
+        The state space is given by all triplets in {0,1}^3 representing the strategy in
+        the public, private, and civil sectors respectively.
 
-            For any two states i and j that differ in exactly one sector, the transition probability
-            from state i to j is given by:
-                 Λ_ij = ρ_ij / 3,
-            where ρ_ij is computed using the _fixation_prob function for the sector that differs.
+        For any two states i and j that differ in exactly one sector, the transition probability
+        from state i to j is given by:
+             Λ_ij = ρ_ij / 3,
+        where ρ_ij is computed using the _fixation_prob function for the sector that differs.
 
-            Diagonal elements are set so that each row sums to 1.
+        Diagonal elements are set so that each row sums to 1.
 
-            Parameters:
-                beta (float): Selection intensity used in the fixation probability computation.
+        Parameters:
+            beta (float): Selection intensity used in the fixation probability computation.
 
-            Returns:
-                m (np.ndarray): An 8x8 numpy array representing the transition matrix.
-            """
+        Returns:
+            m (np.ndarray): An 8x8 numpy array representing the transition matrix.
+        """
         # Define the mapping from coordinate index to sector name.
         sector_names = {0: "public", 1: "private", 2: "civil"}
 
