@@ -64,17 +64,34 @@ class Game:
 
     def _parse_payoff_matrix(self, payoff_matrix: dict) -> bool:
         if not isinstance(payoff_matrix, dict):
+            print("Payoff matrix must be a dict")
             return False
-        if len(payoff_matrix) != 2 ** self._n:
+        if len(payoff_matrix) != len(self._actions) ** self._n:
+            print("Payoff matrix must must have (number of actions ^ number of player) entries")
             return False
 
-        # Validate keys and values.
         for key, value in payoff_matrix.items():
-            if not (isinstance(key, list) and len(key) == self._n and all(isinstance(x, int) for x in key)):
+            if not (isinstance(key, tuple)):
+                print("Key must be a tuple")
                 return False
-            if not (isinstance(value, list) and len(value) == self._n and all(isinstance(x, int) for x in value)):
+            if len(key) != self._n:
+                print("Key size must = number of players")
                 return False
+            if not (all(isinstance(x, int) for x in key)):
+                print("Key tuple must contain int")
+                return False
+            if not (isinstance(value, list)):
+                print("Value must be a list")
+                return False
+            if not all(type(x) in (int, float) for x in value):
+                print("Value list must contain int or float")
+                return False
+            if not (len(value) == self._n):
+                print("Invalid value length")
+                return False
+
         return True
+        # Validate keys and values.
 
     def _init_population(self, N: int, fractions: list[float]) -> list[int]:
         """Initialize a single population of size N based on the provided fractions."""
@@ -98,12 +115,12 @@ class Game:
         strat_combinations = list(product(self._actions, repeat=self._n))
         self._payoff_matrix = {tuple(combo): [0] * self._n for combo in strat_combinations}
 
-    def compute_fitness(self, focal_player, focal_strategy, fractionss):
+    def compute_fitness(self, player, strategy, fractionss):
         all_strats = []
         for sec_idx in range(len(fractionss)):
-            if sec_idx == focal_player:
-                # The focal player uses exactly one strategy (focal_strategy)
-                all_strats.append([focal_strategy])
+            if sec_idx == player:
+                # The player uses exactly one strategy (strategy)
+                all_strats.append([strategy])
             else:
                 # This player can use any of its strategies
                 num_strats = len(fractionss[sec_idx])
@@ -113,14 +130,14 @@ class Game:
         for combo in itertools.product(*all_strats):
             prob = 1.0
             for sec_idx, s_idx in enumerate(combo):
-                if sec_idx != focal_player:
+                if sec_idx != player:
                     prob *= fractionss[sec_idx][s_idx]
 
             # Retrieve the payoff tuple from the payoff matrix
             payoffs = self._payoff_matrix[combo]  # e.g. (p0, p1, p2)
 
-            # Add to the sum: Probability * payoff for the focal player
-            payoff_sum += prob * payoffs[focal_player]
+            # Add to the sum: Probability * payoff for the player
+            payoff_sum += prob * payoffs[player]
 
         return payoff_sum
 
@@ -132,13 +149,13 @@ class Game:
         for l in range(1, N):
             p = 1
             for k in range(1, l + 1):
-                fracs[player][i] = k/N
-                fracs[player][j] = 1 - k/N
+                fracs[player][i] = 1 - k/N
+                fracs[player][j] = k/N
 
                 p1_fitness = self.compute_fitness(player, i, fracs)
                 p2_fitness = self.compute_fitness(player, j, fracs)
-                T_k_minus = k / N * (N - k) / N * self._fermi_rule(p1_fitness, p2_fitness, beta)
-                T_k_plus = k / N * (N - k) / N * self._fermi_rule(p2_fitness, p1_fitness, beta)
+                T_k_minus = (k / N) * ((N - k) / N) * self._fermi_rule(p2_fitness, p1_fitness, beta)
+                T_k_plus = (k / N) * ((N - k) / N) * self._fermi_rule(p1_fitness, p2_fitness, beta)
                 p *= T_k_minus / T_k_plus
             p_ij += p
         p_ij = 1 / (1 + p_ij)
@@ -159,14 +176,14 @@ class Game:
         return diff
 
     def compute_trans_matrix(self, beta):
-        states = list(product(self._actions, repeat=3))
+        states = list(product(self._actions, repeat=self._n))
         num_states = len(states)
-        m = np.zeros((num_states, num_states)) - 1
+        m = np.zeros((num_states, num_states))
         for i in range(num_states):
             state_i = states[i]
             for j in range(num_states):
                 state_j = states[j]
-                if i == j or self._hamming_dist(state_i, state_j) > 1:
+                if i == j:
                     continue
 
                 Ps_fracs = [[0] * len(self._actions) for _ in range(len(self._Ns))]
@@ -177,15 +194,21 @@ class Game:
                 fixation_prob = self._fixation_prob(player, state_i[player], state_j[player], beta,
                                                     Ps_fracs)
 
-                m[i, j] = fixation_prob / 3.0
-
+                m[i, j] = fixation_prob / self._n
+        for i in range(len(m)):
+            s = 0
+            for j in range(len(m)):
+                if i != j:
+                    s += m[i, j]
+            m[i, i] = 1 - s
         return m
 
-    def plot_transition_matrix(self, matrix):
+    def plot_transition_matrix(self, matrix, threshold, scale=1):
         """
         matrix: 8x8 numpy array (transition probabilities)
         states: list of 8 state labels, e.g. ['DDD', 'DDC', ... 'CCC']
         """
+        matrix = copy.deepcopy(matrix)
         G = nx.DiGraph()
         states = ["DDD", "DDC", "DCD", "DCC", "CDD", "CDC", "CCD", "CCC"]
 
@@ -202,8 +225,8 @@ class Game:
 
         for i, s_i in enumerate(states):
             for j, s_j in enumerate(states):
-                if i != j and matrix[i, j] > -1:
-                    G.add_edge(s_i, s_j, weight=matrix[i, j])
+                if i != j and matrix[i, j] > -1 and self._hamming_dist(states[i], states[j]) == 1:
+                    G.add_edge(s_i, s_j, weight=matrix[i, j]*scale)
 
         pos = {
             "DDD": (0.0, 0.0),
@@ -215,7 +238,6 @@ class Game:
             "CCD": (1.0, 2.0),
             "CCC": (2.0, 2.0),
         }
-
         # 2) Compute incoming weight sums
         in_weight_sum = {}
         for node in G.nodes():
@@ -235,7 +257,6 @@ class Game:
         ]
 
         # 4) Plot
-        pos = nx.spring_layout(G)
 
         plt.figure(figsize=(8, 6))
 
@@ -264,6 +285,7 @@ class Game:
         edge_labels = {
             (u, v): f"{d['weight']:.2f}" for u, v, d in G.edges(data=True)
         }
+
         nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
 
         plt.axis("off")
@@ -319,13 +341,16 @@ class Game:
                     # Compute fitness using current fractions (x, y, z correspond to players 0, 1, 2 respectively).
                     fitness_i = self.compute_fitness(s, strat_i, prev_fractionss)
                     fitness_j = self.compute_fitness(s, strat_j, prev_fractionss)
-                    if random.random() < self._fermi_rule(fitness_i, fitness_j, beta):
-                        population[i] = strat_j
+                    if random.random() < self._fermi_rule(fitness_j, fitness_i, beta):
+                        # Mutation: select one individual randomly and flip its strategy with probability u.
+                        #if random.random() < u:
+                        #    population[j] = (population[j] + 1) % len(self._actions)
+                        #else:
+                        population[j] = strat_i
 
-                    # Mutation: select one individual randomly and flip its strategy with probability u.
                     mut_index = random.randrange(pop_size)
                     if random.random() < u:
-                        population[mut_index] = (population[mut_index] + 1) % 2
+                        population[mut_index] = (population[mut_index] + 1) % len(self._actions)
 
                     # Update fraction for the current player (assuming binary strategies: 0 and 1).
                     fraction_strategy1 = np.sum(np.array(population) == 1) / self._Ns[s]
@@ -371,6 +396,7 @@ class Game:
         plt.show()
 
     def set_payoff_matrix(self, payoff_matrix: dict):
+        assert self._parse_payoff_matrix(payoff_matrix), "Invalid Payoff Matrix"
         self._payoff_matrix = payoff_matrix
 
     def get_payoff_matrix(self) -> dict:
