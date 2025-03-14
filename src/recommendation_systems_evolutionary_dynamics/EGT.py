@@ -848,8 +848,8 @@ class Game:
         # then compute the gradient of selection using the formula.
         for i in range(n_pop):
             # Strategy 0 is assumed to be Cooperator, strategy 1 is Defector.
-            f_C = self.compute_fitness(i, 0, fractions)
-            f_D = self.compute_fitness(i, 1, fractions)
+            f_C = self.compute_fitness(i, 1, fractions)
+            f_D = self.compute_fitness(i, 0, fractions)
             Z = self._Zs[i]
             j = config[i]
             # Term from imitation based on fitness differences.
@@ -883,13 +883,13 @@ class Game:
         for j1 in range(Z1 + 1):
             for j2 in range(Z2 + 1):
                 for j3 in range(Z3 + 1):
-                    config = [j1, j2, j3]
+                    config = [Z1-j1, Z2-j2, Z3-j3]
 
                     grad = self.gradient_of_selection(config, beta, mu)
                     # Convert counts to fractions.
-                    x = (j1) / Z1
-                    y = (j2) / Z2
-                    z = (j3) / Z3
+                    x = (Z1-j1) / Z1
+                    y = (Z2-j2) / Z2
+                    z = (Z3-j3) / Z3
 
                     X.append(x)
                     Y.append(y)
