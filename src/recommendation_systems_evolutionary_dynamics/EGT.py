@@ -2,7 +2,6 @@ import math
 import random
 from itertools import product
 import networkx as nx
-from mpl_toolkits.mplot3d import Axes3D
 import itertools
 import copy
 
@@ -11,43 +10,28 @@ import matplotlib.pyplot as plt
 
 
 class Game:
-    def __init__(self, Zs: list[int], strategies_counts: list[list[int]] = None, strategies_fractionss: list[list[float]] = None, payoff_matrix=None, players_names=None, actions_names=None):
-        self._Zs = Zs  # Population sizes for each player
-        self._n = len(Zs)  # Number of players
+    def __init__(self, strategies_counts: list[list[int]] = None, payoff_matrix=None, players_names=None, actions_names=None):
+        self._Zs = [sum(strat_count) for strat_count in strategies_counts]  # Population sizes for each player
+        self._n = len(self._Zs)  # Number of players
 
-        self._payoff_matrix = None
+        self._strategies_counts = copy.deepcopy(strategies_counts)
+        self._strategies_fractionss = self._compute_fractions_from_counts(strategies_counts)
 
-        if ((strategies_counts is not None) and (strategies_fractionss is not None) or
-                ((strategies_counts is None) and (strategies_fractionss is None))):
-            assert False, "Choose either strategies fractions or counts"
+        assert self._parse_payoff_matrix(payoff_matrix), "Invalid payoff matrix format."
+        self._payoff_matrix = payoff_matrix
 
-        if strategies_fractionss is not None:
-            self._strategies_fractionss = copy.deepcopy(strategies_fractionss)
-            self._strategies_counts = self._count_strategies_from_fractions(strategies_fractionss)
-        elif strategies_counts is not None:
-            self._strategies_counts = copy.deepcopy(strategies_counts)
-            self._strategies_fractionss = self._compute_fractions_from_counts(strategies_counts)
-
-        # Derive actions from the first fraction list length.
         self._actions = list(range(len(self._strategies_fractionss[0])))
 
-        # Initialize populations for each player.
         self._Ps = self._init_populations()
 
-        if payoff_matrix is None:
-            self._init_payoff_matrix()
-        else:
-            assert self._parse_payoff_matrix(payoff_matrix), "Invalid payoff matrix format."
-            self._payoff_matrix = payoff_matrix
-
         if players_names is None:
-            self._players_names = ["player_"+str(i) for i in range(1, len(Zs)+1)]
+            self._players_names = ["Player_"+str(i) for i in range(1, len(self._Zs)+1)]
         else:
             assert self._parse_players_names(players_names), "Invalid players names"
             self._players_names = copy.deepcopy(players_names)
 
         if actions_names is None:
-            self._actions_names = ["action_"+str(i) for i in range(1, len(self._strategies_fractionss[0])+1)]
+            self._actions_names = ["Action_"+str(i) for i in range(1, len(self._strategies_fractionss[0])+1)]
         else:
             assert self._parse_actions_names(actions_names), "Invalid actions names"
             self._actions_names = copy.deepcopy(actions_names)
@@ -65,7 +49,7 @@ class Game:
     def _parse_players_names(self, players_names):
         if not isinstance(players_names, list):
             return False
-        if len(players_names) != len(self._Zs):
+        if len(players_names) != len(self._strategies_fractionss):
             return False
         if not all(isinstance(x, str) for x in players_names):
             return False
@@ -76,7 +60,7 @@ class Game:
         if not isinstance(payoff_matrix, dict):
             print("Payoff matrix must be a dict")
             return False
-        if len(payoff_matrix) != len(self._actions) ** self._n:
+        if len(payoff_matrix) != len(self._strategies_counts[0]) ** self._n:
             print("Payoff matrix must must have (number of actions ^ number of player) entries")
             return False
 
@@ -115,19 +99,12 @@ class Game:
         """Initialize populations for all players."""
         return [self._init_population(counts) for counts in self._strategies_counts]
 
-    def _init_payoff_matrix(self):
-        """Create a default payoff matrix with zero payoffs."""
-        strat_combinations = list(product(self._actions, repeat=self._n))
-        self._payoff_matrix = {tuple(combo): [0] * self._n for combo in strat_combinations}
-
     def compute_fitness(self, player, strategy, strategies_fractionss):
         all_strats = []
         for sec_idx in range(len(strategies_fractionss)):
             if sec_idx == player:
-                # The player uses exactly one strategy (strategy)
                 all_strats.append([strategy])
             else:
-                # This player can use any of its strategies
                 num_strats = len(strategies_fractionss[sec_idx])
                 all_strats.append(range(num_strats))
 
@@ -138,11 +115,9 @@ class Game:
                 if sec_idx != player:
                     prob *= strategies_fractionss[sec_idx][s_idx]
 
-            # Retrieve the payoff tuple from the payoff matrix
-            payoffs = self._payoff_matrix[combo]  # e.g. (p0, p1, p2)
+            payoffs = self._payoff_matrix[combo]
 
-            # Add to the sum: Probability * payoff for the player
-            payoff_sum += prob * payoffs[player]
+            payoff_sum += prob * payoffs[player]  # Expected Fitness
 
         return payoff_sum
 
@@ -208,106 +183,20 @@ class Game:
                 if i != j:
                     s += m[i, j]
             m[i, i] = 1 - s
-        return m
+        return m, states
 
-    def plot_transition_matrix2(self, matrix, threshold, scale=1):
-        """
-        matrix: 8x8 numpy array (transition probabilities)
-        states: list of 8 state labels, e.g. ['DDD', 'DDC', ... 'CCC']
-        """
+    def plot_transition_matrix(self, matrix, states, actions_symbols, scale=1):
         matrix = copy.deepcopy(matrix)
         G = nx.DiGraph()
-        states = ["DDD", "DDC", "DCD", "DCC", "CDD", "CDC", "CCD", "CCC"]
+        states_string = []
+        for state in states:
+            state_string = ""
+            for i in range(len(state)):
+                state_string += actions_symbols[state[i]]
+            states_string.append(state_string)
 
         # Add nodes
-        for s in states:
-            G.add_node(s)
-
-        for i in range(len(matrix)):
-            for j in range(len(matrix)):
-                if matrix[i, j] > matrix[j, i]:
-                    matrix[j, i] = -1
-                else:
-                    matrix[i, j] = -1
-
-        for i, s_i in enumerate(states):
-            for j, s_j in enumerate(states):
-                if i != j and matrix[i, j] > -1 and self._hamming_dist(states[i], states[j]) == 1:
-                    G.add_edge(s_i, s_j, weight=matrix[i, j]*scale)
-
-        pos = {
-            "DDD": (0.0, 0.0),
-            "DDC": (1.0, 0.0),
-            "DCD": (0.0, 1.0),
-            "DCC": (1.0, 1.0),
-            "CDD": (2.0, 0.0),
-            "CDC": (2.0, 1.0),
-            "CCD": (1.0, 2.0),
-            "CCC": (2.0, 2.0),
-        }
-        # 2) Compute incoming weight sums
-        in_weight_sum = {}
-        for node in G.nodes():
-            total_in = 0.0
-            for pred in G.predecessors(node):
-                edge_data = G.get_edge_data(pred, node)
-                if edge_data is not None and "weight" in edge_data:
-                    total_in += edge_data["weight"]
-            in_weight_sum[node] = total_in
-
-        # 3) Scale node sizes
-        min_size = 300
-        scale_factor = 3000
-        node_sizes = [
-            min_size + in_weight_sum[node] * scale_factor
-            for node in G.nodes()
-        ]
-
-        # 4) Plot
-
-        plt.figure(figsize=(8, 6))
-
-        # Suppose you computed node_sizes in some way
-        nx.draw_networkx_nodes(
-            G,
-            pos,
-            node_size=node_sizes,
-            node_color="lightgray",
-            edgecolors="black",
-        )
-
-        nx.draw_networkx_edges(
-            G,
-            pos,
-            arrowstyle="->",
-            arrowsize=25,
-            min_source_margin=15,
-            min_target_margin=15,
-            width=2,
-            edge_color='black',
-        )
-
-        nx.draw_networkx_labels(G, pos, font_size=10)
-
-        edge_labels = {
-            (u, v): f"{d['weight']:.2f}" for u, v, d in G.edges(data=True)
-        }
-
-        nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
-
-        plt.axis("off")
-        plt.show()
-
-    def plot_transition_matrix(self, matrix, states, scale=1):
-        """
-            matrix: 8x8 numpy array (transition probabilities)
-            states: list of 8 state labels, e.g. ['DDD', 'DDC', ... 'CCC']
-            """
-        matrix = copy.deepcopy(matrix)
-        G = nx.DiGraph()
-
-        # Add nodes
-        for s in states:
+        for s in states_string:
             G.add_node(s)
 
         # Break ties by marking the lesser transitions as -1
@@ -319,16 +208,18 @@ class Game:
                     matrix[i, j] = -1
 
         # Add edges where hamming distance == 1
-        for i, s_i in enumerate(states):
-            for j, s_j in enumerate(states):
-                if i != j and matrix[i, j] > -1 and self._hamming_dist(states[i], states[j]) == 1:
+        for i, s_i in enumerate(states_string):
+            for j, s_j in enumerate(states_string):
+                if i != j and matrix[i, j] > -1 and self._hamming_dist(states_string[i], states_string[j]) == 1:
                     G.add_edge(s_i, s_j, weight=matrix[i, j] * scale)
 
-        if len(matrix) == len(matrix[0]) == len(states) == 8:
+        if len(matrix) == len(matrix[0]) == len(states_string) == 8:
             coords = [(0.0, -0.2), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0), (2.0, -0.2), (2.0, 1.0), (1.0, 2.0), (2.0, 2.0)]
+        elif len(matrix) == len(matrix[0]) == len(states_string) == 4:
+            coords = [(0.0, 0.0), (2.0, 0.0), (0.0, 2.0), (2.0, 2.0)]
         else:
             assert False, "Wrong states or matrix dimensions"
-        pos = {states[i]: coords[i] for i in range(len(states))}
+        pos = {states_string[i]: coords[i] for i in range(len(states_string))}
 
         # 2) Compute incoming weight sums
         in_weight_sum = {}
@@ -349,23 +240,32 @@ class Game:
         ]
 
         # 4) Plot
-        plt.figure(figsize=(8, 6))
+        plt.figure(figsize=(int(len(states_string)*1.5), int(len(states_string)*1.5*.8)))
+        pos = nx.circular_layout(G)
 
         # Draw nodes
+        # We can find the min and max to ensure the full colormap range is used
+        node_colors = node_sizes / max(node_sizes)
+        vmin = 0
+        vmax = 1
+
         nx.draw_networkx_nodes(
             G,
             pos,
             node_size=node_sizes,
-            node_color="lightgray",
+            node_color=node_colors,
             edgecolors="black",
+            cmap=plt.cm.Blues,  # A colormap (e.g. Blues, OrRd, etc.)
+            vmin=vmin, vmax=vmax
         )
 
-        # Draw edges, crucially passing node_size=node_sizes to offset arrows
+        arrow_len = 25 + 3 * (len(states_string) - 1)
+
         nx.draw_networkx_edges(
             G,
             pos,
             arrowstyle="->",
-            arrowsize=25,
+            arrowsize=arrow_len,
             node_size=node_sizes,  # <-- important to include
             min_source_margin=15,
             min_target_margin=15,
@@ -373,15 +273,20 @@ class Game:
             edge_color='black',
             connectionstyle='arc3,rad=0'  # slight curve helps visibility
         )
+        edge_labels = {
+            (u, v): f"{d['weight']:.2f}"  # or any formatting you like
+            for u, v, d in G.edges(data=True)
+        }
+        nx.draw_networkx_edge_labels(
+            G,
+            pos,
+            edge_labels=edge_labels,
+            font_color='red',
+            label_pos=0.2,
+        )
 
         # Draw labels
         nx.draw_networkx_labels(G, pos, font_size=10)
-
-        # Edge labels
-        edge_labels = {
-            (u, v): f"{d['weight']:.2f}" for u, v, d in G.edges(data=True)
-        }
-        nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
 
         plt.axis("off")
         plt.show()
@@ -402,56 +307,54 @@ class Game:
 
         return stationary
 
-    @staticmethod
-    def visualize_stationary_distribution_bar_charts(stationary_dist, states=None, actions_labels=None, actions_names=None, players_names=None, ylabel=None):
+    def plot_stationary_distribution_bar_charts(self, stationary_distribution, states: list[tuple[int]], actions_symbols=list[str], ylabel=None):
         fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+        states_string = []
+        for state in states:
+            state_string = ""
+            for i in range(len(state)):
+                state_string += actions_symbols[state[i]]
+            states_string.append(state_string)
 
         ax_all = axes[0, 0]
-        x_positions = np.arange(len(states))
-        ax_all.bar(x_positions, stationary_dist, color='gray')
+        x_positions = np.arange(len(states_string))
+        ax_all.bar(x_positions, stationary_distribution, color='gray')
         ax_all.set_xticks(x_positions)
-        ax_all.set_xticklabels(states, rotation=45)
+        ax_all.set_xticklabels(states_string, rotation=45)
         ax_all.set_ylim([0, 1])
         ax_all.set_title("All Populations")
         ax_all.set_ylabel(ylabel)
-
-        def cooperator_defector_fraction(stationary_dist, states, actions_labels, player_index):
+ 
+        def cooperator_defector_fraction(stationary_distribution, states, actions_labels, player_index):
             strategies_fractionss = np.zeros(len(actions_labels))
             for i, st in enumerate(states):
-                strategies_fractionss[actions_labels.index(st[player_index])] += stationary_dist[i]
+                strategies_fractionss[actions_labels.index(st[player_index])] += stationary_distribution[i]
 
             return strategies_fractionss
 
-        # 2) For each of the three sectors, do a bar chart of (cooperators, defectors)
-        #    We assume sector 0 = public, 1 = private, 2 = civil, matching your naming
-        #    but you can adapt as needed.
-
-        # sector 0 -> public
         ax_pub = axes[0, 1]
-        strategies_fractionss = cooperator_defector_fraction(stationary_dist, states, actions_labels, player_index=0)
+        strategies_fractionss = cooperator_defector_fraction(stationary_distribution, states_string, actions_symbols, player_index=0)
         ax_pub.bar([0, 1], strategies_fractionss, color=['blue', 'red'])
         ax_pub.set_xticks([0, 1])
-        ax_pub.set_xticklabels(actions_names)
+        ax_pub.set_xticklabels(self._actions_names)
         ax_pub.set_ylim([0, 1])
-        ax_pub.set_title(players_names[0].capitalize())
+        ax_pub.set_title(self._players_names[0].capitalize())
 
-        # sector 1 -> private
         ax_priv = axes[1, 0]
-        strategies_fractionss = cooperator_defector_fraction(stationary_dist, states, actions_labels, player_index=1)
+        strategies_fractionss = cooperator_defector_fraction(stationary_distribution, states_string, actions_symbols, player_index=1)
         ax_priv.bar([0, 1], strategies_fractionss, color=['blue', 'red'])
         ax_priv.set_xticks([0, 1])
-        ax_priv.set_xticklabels(actions_names)
+        ax_priv.set_xticklabels(self._actions_names)
         ax_priv.set_ylim([0, 1])
-        ax_priv.set_title(players_names[1].capitalize())
-
-        # sector 2 -> civil
-        ax_civ = axes[1, 1]
-        strategies_fractionss = cooperator_defector_fraction(stationary_dist, states, actions_labels, player_index=2)
-        ax_civ.bar([0, 1], strategies_fractionss, color=['blue', 'red'])
-        ax_civ.set_xticks([0, 1])
-        ax_civ.set_xticklabels(actions_names)
-        ax_civ.set_ylim([0, 1])
-        ax_civ.set_title(players_names[2].capitalize())
+        ax_priv.set_title(self._players_names[1].capitalize())
+        if len(self._players_names) == 3:
+            ax_civ = axes[1, 1]
+            strategies_fractionss = cooperator_defector_fraction(stationary_distribution, states_string, actions_symbols, player_index=2)
+            ax_civ.bar([0, 1], strategies_fractionss, color=['blue', 'red'])
+            ax_civ.set_xticks([0, 1])
+            ax_civ.set_xticklabels(self._actions_names)
+            ax_civ.set_ylim([0, 1])
+            ax_civ.set_title(self._players_names[2].capitalize())
 
         plt.tight_layout()
         plt.show()
@@ -749,12 +652,13 @@ class Game:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
         return mean_fractionss_hist
 
-    def visualize_evol(self, fractionss_hist, players: list[str], xlabel: str = None,
+    def plot_strategy_evol(self, fractionss_hist, action: int, xlabel: str = None,
                        ylabel: str = None, title: str = None):
+        fractionss_hist = fractionss_hist[:, :, action]
         timesteps = np.arange(fractionss_hist.shape[0])
         plt.figure(figsize=(10, 6))
         for col in range(fractionss_hist.shape[1]):
-            plt.plot(timesteps, fractionss_hist[:, col], label=players[col])
+            plt.plot(timesteps, fractionss_hist[:, col], label=self._players_names[col])
         plt.ylim(0, 1)
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
@@ -763,11 +667,13 @@ class Game:
         plt.grid(True)
         plt.show()
 
-    def visualize_stationary_dist(self, P_hist,  xlabel: str = None,
+    def plot_stationary_dist(self, Ps_hist,  player: int, action: int, xlabel: str = None,
                                   ylabel: str = None, title: str = None):
-        states = P_hist.sum(axis=2).flatten().astype(int)
+        P_hist = Ps_hist[player]
+        states = np.sum(P_hist == action, axis=2)
+
         unique_states, counts = np.unique(states, return_counts=True)
-        fractions = counts / len(states)
+        fractions = counts / sum(counts)
         most_common_idx = int(np.argmax(fractions))
         plt.plot(unique_states, fractions)
         plt.scatter(unique_states[most_common_idx], fractions[most_common_idx], color="red",
