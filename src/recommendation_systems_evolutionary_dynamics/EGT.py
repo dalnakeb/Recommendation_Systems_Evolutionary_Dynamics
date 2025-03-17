@@ -124,20 +124,25 @@ class Game:
     def _fixation_prob(self, player, i, j, beta, strategies_fractions):
         p_ij = 0
         N = self._Zs[player]
-        strategies_fractions = copy.deepcopy(strategies_fractions)
+
+        # Precompute and cache fitness for each k = 1, ..., N-1.
+        cache_i = {}
+        cache_j = {}
+        for k in range(1, N):
+            copy_fractions = copy.deepcopy(strategies_fractions)
+            copy_fractions[player][i] = 1 - k / N
+            copy_fractions[player][j] = k / N
+            cache_i[k] = self.compute_fitness(player, i, copy_fractions)
+            cache_j[k] = self.compute_fitness(player, j, copy_fractions)
 
         for l in range(1, N):
             p = 1
             for k in range(1, l + 1):
-                strategies_fractions[player][i] = 1 - k/N
-                strategies_fractions[player][j] = k/N
-
-                p1_fitness = self.compute_fitness(player, i, strategies_fractions)
-                p2_fitness = self.compute_fitness(player, j, strategies_fractions)
-                T_k_minus = (k / N) * ((N - k) / N) * self._fermi_rule(p2_fitness, p1_fitness, beta)
-                T_k_plus = (k / N) * ((N - k) / N) * self._fermi_rule(p1_fitness, p2_fitness, beta)
-                p *= T_k_minus / T_k_plus
+                ratio = (self._fermi_rule(cache_j[k], cache_i[k], beta) /
+                         self._fermi_rule(cache_i[k], cache_j[k], beta))
+                p *= ratio
             p_ij += p
+
         p_ij = 1 / (1 + p_ij)
         return p_ij
 
@@ -162,6 +167,7 @@ class Game:
         num_states = len(states)
         m = np.zeros((num_states, num_states))
         for i in range(num_states):
+            print(i)
             state_i = states[i]
             for j in range(num_states):
                 state_j = states[j]
