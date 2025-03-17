@@ -213,14 +213,6 @@ class Game:
                 if i != j and matrix[i, j] > -1 and self._hamming_dist(states_string[i], states_string[j]) == 1:
                     G.add_edge(s_i, s_j, weight=matrix[i, j] * scale)
 
-        if len(matrix) == len(matrix[0]) == len(states_string) == 8:
-            coords = [(0.0, -0.2), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0), (2.0, -0.2), (2.0, 1.0), (1.0, 2.0), (2.0, 2.0)]
-        elif len(matrix) == len(matrix[0]) == len(states_string) == 4:
-            coords = [(0.0, 0.0), (2.0, 0.0), (0.0, 2.0), (2.0, 2.0)]
-        else:
-            assert False, "Wrong states or matrix dimensions"
-        pos = {states_string[i]: coords[i] for i in range(len(states_string))}
-
         # 2) Compute incoming weight sums
         in_weight_sum = {}
         for node in G.nodes():
@@ -307,8 +299,8 @@ class Game:
 
         return stationary
 
-    def plot_stationary_distribution_bar_charts(self, stationary_distribution, states: list[tuple[int]], actions_symbols=list[str], ylabel=None):
-        fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    def plot_stationary_distribution_all_pop(self, stationary_distribution, states: list[tuple[int]], actions_symbols: list[str], title: str, ylabel=None):
+        fig, ax = plt.subplots(figsize=(5, 4))
         states_string = []
         for state in states:
             state_string = ""
@@ -316,46 +308,39 @@ class Game:
                 state_string += actions_symbols[state[i]]
             states_string.append(state_string)
 
-        ax_all = axes[0, 0]
         x_positions = np.arange(len(states_string))
-        ax_all.bar(x_positions, stationary_distribution, color='gray')
-        ax_all.set_xticks(x_positions)
-        ax_all.set_xticklabels(states_string, rotation=45)
-        ax_all.set_ylim([0, 1])
-        ax_all.set_title("All Populations")
-        ax_all.set_ylabel(ylabel)
- 
-        def cooperator_defector_fraction(stationary_distribution, states, actions_labels, player_index):
-            strategies_fractionss = np.zeros(len(actions_labels))
-            for i, st in enumerate(states):
-                strategies_fractionss[actions_labels.index(st[player_index])] += stationary_distribution[i]
+        ax.bar(x_positions, stationary_distribution, color='gray')
+        ax.set_xticks(x_positions)
+        ax.set_xticklabels(states_string, rotation=45)
+        ax.set_ylim([0, 1])
+        ax.set_title(title)
+        ax.set_ylabel(ylabel)
+        plt.tight_layout()
+        plt.show()
+
+    def plot_stationary_distribution_per_pop(self, stationary_distribution, player:int, states: list[tuple[int]], actions_symbols: list[str], title: str, ylabel=None):
+        def cooperator_defector_fraction(stationary_distribution, states_string, actions_symbols, player):
+            strategies_fractionss = np.zeros(len(actions_symbols))
+            for i, st in enumerate(states_string):
+                strategies_fractionss[actions_symbols.index(st[player])] += stationary_distribution[i]
 
             return strategies_fractionss
 
-        ax_pub = axes[0, 1]
-        strategies_fractionss = cooperator_defector_fraction(stationary_distribution, states_string, actions_symbols, player_index=0)
-        ax_pub.bar([0, 1], strategies_fractionss, color=['blue', 'red'])
-        ax_pub.set_xticks([0, 1])
-        ax_pub.set_xticklabels(self._actions_names)
-        ax_pub.set_ylim([0, 1])
-        ax_pub.set_title(self._players_names[0].capitalize())
-
-        ax_priv = axes[1, 0]
-        strategies_fractionss = cooperator_defector_fraction(stationary_distribution, states_string, actions_symbols, player_index=1)
-        ax_priv.bar([0, 1], strategies_fractionss, color=['blue', 'red'])
-        ax_priv.set_xticks([0, 1])
-        ax_priv.set_xticklabels(self._actions_names)
-        ax_priv.set_ylim([0, 1])
-        ax_priv.set_title(self._players_names[1].capitalize())
-        if len(self._players_names) == 3:
-            ax_civ = axes[1, 1]
-            strategies_fractionss = cooperator_defector_fraction(stationary_distribution, states_string, actions_symbols, player_index=2)
-            ax_civ.bar([0, 1], strategies_fractionss, color=['blue', 'red'])
-            ax_civ.set_xticks([0, 1])
-            ax_civ.set_xticklabels(self._actions_names)
-            ax_civ.set_ylim([0, 1])
-            ax_civ.set_title(self._players_names[2].capitalize())
-
+        states_string = []
+        for state in states:
+            state_string = ""
+            for i in range(len(state)):
+                state_string += actions_symbols[state[i]]
+            states_string.append(state_string)
+        colors = ["Red", "Blue", "Green", "Yellow"]
+        fig, ax = plt.subplots(figsize=(5, 4))
+        strategies_fractionss = cooperator_defector_fraction(stationary_distribution, states_string, actions_symbols, player=player)
+        ax.bar(range(len(actions_symbols)), strategies_fractionss, color=colors[0:len(actions_symbols)])
+        ax.set_xticks(range(len(actions_symbols)))
+        ax.set_xticklabels(self._actions_names)
+        ax.set_ylim([0, 1])
+        ax.set_ylabel(ylabel)
+        ax.set_title(title)
         plt.tight_layout()
         plt.show()
 
@@ -363,29 +348,29 @@ class Game:
     def _fermi_rule(p1_fitness: float, p2_fitness: float, beta: float) -> float:
         return 1 / (1 + math.exp(-beta * (p2_fitness - p1_fitness)))
 
-    def moran_process(self, process, sync=False, steps: int = 50, reps: int = 1, beta: float = 1, u: float = 0.01, return_hist: bool = False, print_rep_interval: int = None):
+    def moran_process(self, process, sync=False, steps: int = 50, reps: int = 1, beta: float = 1, mu: float = 0.01, return_hist: bool = False, print_rep_interval: int = None):
         if process == "bd" and sync:
-            res = self._birth_death_sync(reps, steps, beta, u, return_hist, print_rep_interval)
+            res = self._birth_death_sync(reps, steps, beta, mu, return_hist, print_rep_interval)
 
         elif process == "bd" and not sync:
-            res = self._birth_death_async(reps, steps, beta, u, return_hist, print_rep_interval)
+            res = self._birth_death_async(reps, steps, beta, mu, return_hist, print_rep_interval)
 
         elif process == "db" and sync:
-            res = self._death_birth_sync(reps, steps, beta, u, return_hist, print_rep_interval)
+            res = self._death_birth_sync(reps, steps, beta, mu, return_hist, print_rep_interval)
 
         elif process == "db" and not sync:
-            res = self._death_birth_async(reps, steps, beta, u, return_hist, print_rep_interval)
+            res = self._death_birth_async(reps, steps, beta, mu, return_hist, print_rep_interval)
             
         elif process == "pairwise" and not sync:
-            res = self._pairwise_async(reps, steps, beta, u, return_hist, print_rep_interval)
+            res = self._pairwise_async(reps, steps, beta, mu, return_hist, print_rep_interval)
             
         elif process == "pairwise" and sync:
-            res = self._pairwise_sync(reps, steps, beta, u, return_hist, print_rep_interval)
+            res = self._pairwise_sync(reps, steps, beta, mu, return_hist, print_rep_interval)
         else:
             assert False, "Wrong process name"
         return res
-
-    def _birth_death_async(self, rep: int = 1, steps: int = 50, beta: float = 1, u: float = 0.01,
+ 
+    def _birth_death_async(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                            return_hist: bool = False, print_rep_interval: int = None):
 
         strategies_fractionss_hist = np.zeros((rep, steps + 1, self._n, len(self._actions)))
@@ -411,7 +396,7 @@ class Game:
                     fitness_i = self.compute_fitness(s, strat_i, prev_strategies_fractionss)
                     fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
                     if random.random() < self._fermi_rule(fitness_j, fitness_i, beta):
-                        if random.random() < u:
+                        if random.random() < mu:
                             new_P[j] = (new_P[j] + random.randint(0, len(self._actions) - 1)) % len(
                                 self._actions)
                         else:
@@ -427,8 +412,8 @@ class Game:
         if return_hist:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
         return mean_fractionss_hist
-
-    def _birth_death_sync(self, rep: int = 1, steps: int = 50, beta: float = 1, u: float = 0.01,
+  
+    def _birth_death_sync(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                            return_hist: bool = False, print_rep_interval: int = None):
 
         strategies_fractionss_hist = np.zeros((rep, steps + 1, self._n, len(self._actions)))
@@ -454,7 +439,7 @@ class Game:
                         fitness_i = self.compute_fitness(s, strat_i, prev_strategies_fractionss)
                         fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
                         if random.random() < self._fermi_rule(fitness_j, fitness_i, beta):
-                            if random.random() < u:
+                            if random.random() < mu:
                                 new_Ps[s][j] = (new_Ps[s][j] + random.randint(0, len(self._actions) - 1)) % len(
                                     self._actions)
                             else:
@@ -471,8 +456,8 @@ class Game:
         if return_hist:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
         return mean_fractionss_hist
-
-    def _death_birth_async(self, rep: int = 1, steps: int = 50, beta: float = 1, u: float = 0.01,
+ 
+    def _death_birth_async(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                            return_hist: bool = False, print_rep_interval: int = None):
 
         strategies_fractionss_hist = np.zeros((rep, steps + 1, self._n, len(self._actions)))
@@ -498,7 +483,7 @@ class Game:
                     fitness_i = self.compute_fitness(s, strat_i, prev_strategies_fractionss)
                     fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
                     if random.random() < self._fermi_rule(fitness_i, fitness_j, beta):
-                        if random.random() < u:
+                        if random.random() < mu:
                             new_P[i] = (new_P[i] + random.randint(0, len(self._actions) - 1)) % len(
                                 self._actions)
                         else:
@@ -514,8 +499,8 @@ class Game:
         if return_hist:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
         return mean_fractionss_hist
-
-    def _death_birth_sync(self, rep: int = 1, steps: int = 50, beta: float = 1, u: float = 0.01,
+ 
+    def _death_birth_sync(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                           return_hist: bool = False, print_rep_interval: int = None):
 
         strategies_fractionss_hist = np.zeros((rep, steps + 1, self._n, len(self._actions)))
@@ -541,7 +526,7 @@ class Game:
                         fitness_i = self.compute_fitness(s, strat_i, prev_strategies_fractionss)
                         fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
                         if random.random() < self._fermi_rule(fitness_i, fitness_j, beta):
-                            if random.random() < u:
+                            if random.random() < mu:
                                 new_Ps[s][i] = (new_Ps[s][i] + random.randint(0, len(self._actions) - 1)) % len(
                                     self._actions)
                             else:
@@ -558,8 +543,8 @@ class Game:
         if return_hist:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
         return mean_fractionss_hist
-
-    def _pairwise_async(self, rep: int = 1, steps: int = 50, beta: float = 1, u: float = 0.01,
+ 
+    def _pairwise_async(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                            return_hist: bool = False, print_rep_interval: int = None):
 
         strategies_fractionss_hist = np.zeros((rep, steps + 1, self._n, len(self._actions)))
@@ -585,13 +570,13 @@ class Game:
                     fitness_i = self.compute_fitness(s, strat_i, prev_strategies_fractionss)
                     fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
                     if random.random() < self._fermi_rule(fitness_j, fitness_i, beta):
-                        if random.random() < u:
+                        if random.random() < mu:
                             new_P[j] = (new_P[j] + random.randint(0, len(self._actions) - 1)) % len(
                                 self._actions)
                         else:
                             new_P[j] = strat_i
                     else:
-                        if random.random() < u:
+                        if random.random() < mu:
                             new_P[i] = (new_P[i] + random.randint(0, len(self._actions) - 1)) % len(
                                 self._actions)
                         else:
@@ -607,8 +592,8 @@ class Game:
         if return_hist:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
         return mean_fractionss_hist
-
-    def _pairwise_sync(self, rep: int = 1, steps: int = 50, beta: float = 1, u: float = 0.01,
+ 
+    def _pairwise_sync(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                           return_hist: bool = False, print_rep_interval: int = None):
 
         strategies_fractionss_hist = np.zeros((rep, steps + 1, self._n, len(self._actions)))
@@ -634,7 +619,7 @@ class Game:
                         fitness_i = self.compute_fitness(s, strat_i, prev_strategies_fractionss)
                         fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
                         if random.random() < self._fermi_rule(fitness_j, fitness_i, beta):
-                            if random.random() < u:
+                            if random.random() < mu:
                                 new_Ps[s][i] = (new_Ps[s][i] + random.randint(0, len(self._actions) - 1)) % len(
                                     self._actions)
                             else:
