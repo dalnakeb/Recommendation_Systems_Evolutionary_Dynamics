@@ -375,7 +375,28 @@ class Game:
         else:
             assert False, "Wrong process name"
         return res
- 
+
+    def compute_probs_of_selection(self, s, P, prev_strategies_fractionss):
+        fitness = np.zeros(self._Zs[s])
+        for i in range(self._Zs[s]):
+            fitness[i] = self.compute_fitness(s, P[i], prev_strategies_fractionss)
+
+        fitness_min = min(fitness)
+        fitness_max = max(fitness)
+        for i in range(self._Zs[s]):
+            term1 = fitness[i] - fitness_min
+            term2 = fitness_max - fitness_min
+            if term2 == 0:
+                fitness[i] = 0
+            else:
+                fitness[i] = term1 / term2
+
+        fitness += 1/self._Zs[s]
+
+        probs = fitness / np.sum(fitness)
+        #print(f"prob: {probs}", f"fitness:{fitness}")
+        return probs
+
     def _birth_death_async(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                            return_hist: bool = False, print_rep_interval: int = None):
 
@@ -397,7 +418,12 @@ class Game:
                 for s in range(self._n):
                     new_P = copy.deepcopy(prev_Ps[s])
 
-                    i, j = random.sample(range(len(new_P)), 2)
+                    probs = self.compute_probs_of_selection(s, new_P, prev_strategies_fractionss)
+                    #print(f"prob2: {probs}")
+                    i = np.random.choice(new_P, p=probs)
+
+                    j = random.randint(0, len(new_P)-1)
+
                     strat_i, strat_j = new_P[i], new_P[j]
                     fitness_i = self.compute_fitness(s, strat_i, prev_strategies_fractionss)
                     fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
@@ -441,6 +467,7 @@ class Game:
                 for s in range(self._n):
                     for i in range(len(new_Ps[s])):
                         j = random.randint(0, len(new_Ps[s])-1)
+
                         strat_i, strat_j = prev_Ps[s][i], prev_Ps[s][j]
                         fitness_i = self.compute_fitness(s, strat_i, prev_strategies_fractionss)
                         fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
@@ -483,8 +510,12 @@ class Game:
             for t in range(steps):
                 for s in range(self._n):
                     new_P = copy.deepcopy(prev_Ps[s])
+                    probs = self.compute_probs_of_selection(s, new_P, prev_strategies_fractionss)
+                    # print(f"prob2: {probs}")
 
-                    i, j = random.sample(range(len(new_P)), 2)
+                    i = random.randint(0, len(new_P) - 1)
+                    j = np.random.choice(new_P, p=probs)
+
                     strat_i, strat_j = new_P[i], new_P[j]
                     fitness_i = self.compute_fitness(s, strat_i, prev_strategies_fractionss)
                     fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
@@ -731,31 +762,23 @@ class Game:
         return strategies_fractionss
     # Setters
 
-    def gradient_of_selection(self, config, beta, mu):
+    def compute_gradient(self, config, beta, mu):
         gradients = []
-        n_pop = self._n
-        fractions = []
-        for i in range(n_pop):
-            Z = self._Zs[i]
-            j = config[i]
-            # Avoid division by zero; we assume Z>=2
-            fractions.append([j / Z, (Z - j) / Z])
+        strategies_fractionss = []
+        for i in range(self._n):
+            j_i = config[i]
+            strategies_fractionss.append([(self._Zs[i] - j_i) / self._Zs[i], j_i / self._Zs[i]])
 
-        # For each population, compute the fitness for cooperators and defectors,
-        # then compute the gradient of selection using the formula.
-        for i in range(n_pop):
-            # Strategy 0 is assumed to be Cooperator, strategy 1 is Defector.
-            f_C = self.compute_fitness(i, 1, fractions)
-            f_D = self.compute_fitness(i, 0, fractions)
+        for i in range(self._n):
+            f_C = self.compute_fitness(i, 1, strategies_fractionss)
+            f_D = self.compute_fitness(i, 0, strategies_fractionss)
             Z = self._Zs[i]
             j = config[i]
-            # Term from imitation based on fitness differences.
-            # We use j/(Z-1) provided Z > 1.
             if Z > 1:
                 term1 = ((Z - j) / Z) * (j / (Z - 1))
             else:
                 term1 = 0
-            # Term due to mutation (or exploration).
+
             term2 = ((Z - 2 * j) / Z) * mu
 
             # The hyperbolic tangent ensures the term scales between -1 and 1.
@@ -764,47 +787,46 @@ class Game:
 
         return gradients
 
-    def plot_gradient_field(self, beta, mu, title=None, players_names=None, fraction_name=None, legend=None):
+    def compute_gradient_of_selection(self, beta, mu):
         if self._n != 3:
             print("plot_gradient_field is implemented for 3 populations only.")
             return
 
-            # Population sizes for the three populations.
         Z1, Z2, Z3 = self._Zs[0], self._Zs[1], self._Zs[2]
 
-        # Lists to store fraction coordinates and gradient components.
-        X, Y, Z_coords = [], [], []
-        U, V, W = [], [], []
+        X, Y, Z = [], [], []
+        G1, G2, G3 = [], [], []
 
         # Iterate over all possible configurations: j1 from 0 to Z1, j2 from 0 to Z2, j3 from 0 to Z3.
         for j1 in range(Z1 + 1):
             for j2 in range(Z2 + 1):
                 for j3 in range(Z3 + 1):
-                    config = [Z1-j1, Z2-j2, Z3-j3]
+                    config = [j1, j2, j3]
 
-                    grad = self.gradient_of_selection(config, beta, mu)
+                    gradient = self.compute_gradient(config, beta, mu)
                     # Convert counts to fractions.
-                    x = (Z1-j1) / Z1
-                    y = (Z2-j2) / Z2
-                    z = (Z3-j3) / Z3
+                    x = (j1) / Z1
+                    y = (j2) / Z2
+                    z = (j3) / Z3
 
                     X.append(x)
                     Y.append(y)
-                    Z_coords.append(z)
-                    U.append(grad[0])
-                    V.append(grad[1])
-                    W.append(grad[2])
+                    Z.append(z)
+                    G1.append(gradient[0])
+                    G2.append(gradient[1])
+                    G3.append(gradient[2])
 
-        # Convert lists to NumPy arrays.
         X = np.array(X)
         Y = np.array(Y)
-        Z_coords = np.array(Z_coords)
-        U = np.array(U)
-        V = np.array(V)
-        W = np.array(W)
+        Z = np.array(Z)
+        G1 = np.array(G1)
+        G2 = np.array(G2)
+        G3 = np.array(G3)
+        return X, Y, Z, G1, G2, G3
 
+    def plot_gradient_of_selection(self, X, Y, Z, G1, G2, G3, title=None, players_names=None, fraction_name=None, legend=None):
         # Compute the magnitude of the gradient for each configuration.
-        mag = np.sqrt(U ** 2 + V ** 2 + W ** 2)
+        mag = np.sqrt(G1 ** 2 + G2 ** 2 + G3 ** 2)
         # Normalize magnitudes for the colormap.
         norm = plt.Normalize(vmin=mag.min(), vmax=mag.max())
         # Use a colormap that goes from blue (low) to red (high). You can choose another cmap if desired.
@@ -813,8 +835,8 @@ class Game:
         # Create a 3D quiver plot.
         fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(111, projection='3d')
-        # Plot arrows: each arrow is located at (X, Y, Z_coords) with components (U, V, W)
-        q = ax.quiver(X, Y, Z_coords, U, V, W, length=0.05, normalize=True, color=colors)
+        # Plot arrows: each arrow is located at (X, Y, Z) with components (G1, G2, G3)
+        q = ax.quiver(X, Y, Z, G1, G2, G3, length=0.05, normalize=True, color=colors)
 
         ax.set_xlabel(f"Fraction of {fraction_name} in {players_names[0]}")
         ax.set_ylabel(f"Fraction of {fraction_name} in {players_names[1]}")
@@ -829,46 +851,42 @@ class Game:
         plt.show()
 
     def run_replicator_dynamics(self, steps=50,  players_names=None, actions_names=None):
-        # Convert the current fractions to a NumPy array of shape (n_pops, n_strats)
-        fractions = np.array(self._strategies_fractionss, dtype=float)
+        strategies_fractionss = np.array(self._strategies_fractionss, dtype=float)
 
-        # Store history of fractions: shape (time, pop, strategy)
-        fractions_hist = np.zeros((steps + 1, self._n, len(self._actions)))
-        fractions_hist[0] = fractions
+        fractionss_hist = np.zeros((steps + 1, self._n, len(self._actions)))
+        fractionss_hist[0] = strategies_fractionss
 
         for t in range(steps):
-            new_fractions = np.zeros_like(fractions)
+            new_fractions = np.zeros_like(strategies_fractionss)
 
-            # For each population i
             for i in range(self._n):
-                # 1) Compute payoff to each strategy k in population i
                 payoffs = []
                 for k in range(len(self._actions)):
-                    payoff_k = self.compute_fitness(i, k, fractions)
+                    payoff_k = self.compute_fitness(i, k, strategies_fractionss)
                     payoffs.append(payoff_k)
                 payoffs = np.array(payoffs, dtype=float)
 
                 # 2) (Optional) SHIFT payoffs if some are negative or if avg payoff might be <= 0
                 #    so that average payoff is safely positive:
-                shift_amount = -payoffs.min()
-                if shift_amount >= 0:
-                    payoffs += (shift_amount + 1e-12)
+#                shift_amount = -payoffs.min()
+ #               if shift_amount >= 0:
+  #                  payoffs += (shift_amount + 1e-12)
 
                 # 3) Compute the average payoff in population i:
-                #    dot product of fractions[i] with the payoffs for each strategy
-                avg_payoff_i = np.dot(fractions[i], payoffs)
+                #    dot product of strategies_fractionss[i] with the payoffs for each strategy
+                avg_payoff_i = np.dot(strategies_fractionss[i], payoffs)
 
                 # 4) Replicator update:
                 #    x_{i,k}(t+1) = x_{i,k}(t)*payoffs[k] / avg_payoff_i
                 if avg_payoff_i > 1e-12:
-                    new_fractions[i] = fractions[i] * payoffs / avg_payoff_i
+                    new_fractions[i] = strategies_fractionss[i] * payoffs / avg_payoff_i
                 else:
                     # If the average payoff is ~0, just hold the old distribution
-                    new_fractions[i] = fractions[i]
+                    new_fractions[i] = strategies_fractionss[i]
 
-            # 5) Update fractions for the next step
-            fractions = new_fractions
-            fractions_hist[t + 1] = fractions
+            # 5) Update strategies_fractionss for the next step
+            strategies_fractionss = new_fractions
+            fractionss_hist[t + 1] = strategies_fractionss
 
         # --- Plotting ---
         fig, axes = plt.subplots(1, self._n, figsize=(6 * self._n, 4), sharey=True)
@@ -879,7 +897,7 @@ class Game:
         for i in range(self._n):
             ax = axes[i]
             for k in range(len(self._actions)):
-                ax.plot(time_points, fractions_hist[:, i, k], label=f"{actions_names[k]}")
+                ax.plot(time_points, fractionss_hist[:, i, k], label=f"{actions_names[k]}")
             ax.set_title(f"{players_names[i]}")
             ax.set_xlabel("Time")
             ax.set_ylabel("Frequency")
