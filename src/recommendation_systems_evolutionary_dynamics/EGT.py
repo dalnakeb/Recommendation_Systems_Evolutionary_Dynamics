@@ -4,6 +4,7 @@ from itertools import product
 import networkx as nx
 import itertools
 import copy
+from scipy.integrate import solve_ivp
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -306,7 +307,7 @@ class Game:
         return stationary
 
     def plot_stationary_distribution_all_pop(self, stationary_distribution, states: list[tuple[int]], actions_symbols: list[str], title: str, ylabel=None):
-        fig, ax = plt.subplots(figsize=(5, 4))
+        fig, ax = plt.subplots(figsize=(5+len(states)//4, 4+len(states)//5))
         states_string = []
         for state in states:
             state_string = ""
@@ -420,11 +421,10 @@ class Game:
 
                     probs = self.compute_probs_of_selection(s, new_P, prev_strategies_fractionss)
                     #print(f"prob2: {probs}")
-                    i = np.random.choice(new_P, p=probs)
-
+                    strat_i = np.random.choice(new_P, p=probs)
                     j = random.randint(0, len(new_P)-1)
+                    strat_j = new_P[j]
 
-                    strat_i, strat_j = new_P[i], new_P[j]
                     fitness_i = self.compute_fitness(s, strat_i, prev_strategies_fractionss)
                     fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
                     if random.random() < self._fermi_rule(fitness_j, fitness_i, beta):
@@ -514,9 +514,9 @@ class Game:
                     # print(f"prob2: {probs}")
 
                     i = random.randint(0, len(new_P) - 1)
-                    j = np.random.choice(new_P, p=probs)
+                    strat_j = np.random.choice(new_P, p=probs)
+                    strat_i = new_P[i]
 
-                    strat_i, strat_j = new_P[i], new_P[j]
                     fitness_i = self.compute_fitness(s, strat_i, prev_strategies_fractionss)
                     fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
                     if random.random() < self._fermi_rule(fitness_i, fitness_j, beta):
@@ -606,18 +606,18 @@ class Game:
                     strat_i, strat_j = new_P[i], new_P[j]
                     fitness_i = self.compute_fitness(s, strat_i, prev_strategies_fractionss)
                     fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
-                    if random.random() < self._fermi_rule(fitness_j, fitness_i, beta):
-                        if random.random() < mu:
-                            new_P[j] = (new_P[j] + random.randint(0, len(self._actions) - 1)) % len(
-                                self._actions)
-                        else:
-                            new_P[j] = strat_i
-                    else:
+                    if random.random() < self._fermi_rule(fitness_i, fitness_j, beta):
                         if random.random() < mu:
                             new_P[i] = (new_P[i] + random.randint(0, len(self._actions) - 1)) % len(
                                 self._actions)
                         else:
                             new_P[i] = strat_j
+                    else:
+                        if random.random() < mu:
+                            new_P[j] = (new_P[j] + random.randint(0, len(self._actions) - 1)) % len(
+                                self._actions)
+                        else:
+                            new_P[j] = strat_i
 
                     new_strategies_fractions = self._compute_fractions_from_pop([new_P])
                     strategies_fractionss_hist[r, t + 1, s] = new_strategies_fractions[0]
@@ -656,6 +656,12 @@ class Game:
                         fitness_i = self.compute_fitness(s, strat_i, prev_strategies_fractionss)
                         fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
                         if random.random() < self._fermi_rule(fitness_j, fitness_i, beta):
+                            if random.random() < mu:
+                                new_Ps[s][j] = (new_Ps[s][j] + random.randint(0, len(self._actions) - 1)) % len(
+                                    self._actions)
+                            else:
+                                new_Ps[s][j] = strat_i
+                        else:
                             if random.random() < mu:
                                 new_Ps[s][i] = (new_Ps[s][i] + random.randint(0, len(self._actions) - 1)) % len(
                                     self._actions)
@@ -793,7 +799,6 @@ class Game:
             return
 
         Z1, Z2, Z3 = self._Zs[0], self._Zs[1], self._Zs[2]
-
         X, Y, Z = [], [], []
         G1, G2, G3 = [], [], []
 
@@ -849,6 +854,28 @@ class Game:
         cbar = plt.colorbar(sm, ax=ax, pad=0.1)
         cbar.set_label(legend)
         plt.show()
+
+    def compute_replicator_dynamics(self, steps=50):
+        strategies_fractionss = copy.deepcopy(self._strategies_fractionss)
+        strategies_fractionss_hist = np.zeros((steps+1, self._n, len(self._actions)))
+        for s in range(self._n):
+            for i in range(len(self._actions)):
+                strategies_fractionss_hist[0, s, i] = strategies_fractionss[s][i]
+
+        for step in range(1, steps+1):
+            for s in range(self._n):
+                f_bar = sum([self.compute_fitness(s, i, strategies_fractionss)*strategies_fractionss[s][i] for i in range(len(self._actions))])
+                for i in range(len(self._actions)):
+                    f_i = self.compute_fitness(s, i, strategies_fractionss)
+                    x_i = strategies_fractionss[s][i]
+                    strategies_fractionss_hist[step, s, i] = x_i*(f_i - f_bar)
+
+            strategies_fractionss = strategies_fractionss_hist[step]
+
+        return strategies_fractionss_hist
+
+    def plot_replicator_dynamics(self, replicators, players_names=None, actions_names=None):
+        pass
 
     def run_replicator_dynamics(self, steps=50,  players_names=None, actions_names=None):
         strategies_fractionss = np.array(self._strategies_fractionss, dtype=float)

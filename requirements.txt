@@ -3,3 +3,4 @@ pathlib==1.0.1
 numpy~=1.24.3
 matplotlib~=3.9.1
 networkx~=3.1
+scipy~=1.14.0
