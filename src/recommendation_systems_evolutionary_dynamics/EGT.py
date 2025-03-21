@@ -211,14 +211,21 @@ class Game:
             for j in range(len(matrix)):
                 if matrix[i, j] > matrix[j, i]:
                     matrix[j, i] = -1
-                else:
+                elif matrix[i, j] < matrix[j, i]:
                     matrix[i, j] = -1
 
         # Add edges where hamming distance == 1
+        dashed_edges = []
+        arrow_edges = []
         for i, s_i in enumerate(states_string):
             for j, s_j in enumerate(states_string):
                 if i != j and matrix[i, j] > -1 and self._hamming_dist(states_string[i], states_string[j]) == 1:
-                    G.add_edge(s_i, s_j, weight=matrix[i, j] * scale)
+                    if matrix[i, j] != matrix[j, i]:
+                        G.add_edge(s_i, s_j, weight=matrix[i, j] * scale)
+                        arrow_edges.append((s_i, s_j))
+                    else:
+                        dashed_edges.append((s_i, s_j))
+                        G.add_edge(s_i, s_j)
 
         # 2) Compute incoming weight sums
         in_weight_sum = {}
@@ -265,6 +272,7 @@ class Game:
             pos,
             arrowstyle="->",
             arrowsize=arrow_len,
+            edgelist=arrow_edges,
             node_size=node_sizes,  # <-- important to include
             min_source_margin=15,
             min_target_margin=15,
@@ -272,10 +280,21 @@ class Game:
             edge_color='black',
             connectionstyle='arc3,rad=0'  # slight curve helps visibility
         )
-        edge_labels = {
-            (u, v): f"{d['weight']:.2f}"  # or any formatting you like
-            for u, v, d in G.edges(data=True)
-        }
+
+        nx.draw_networkx_edges(
+            G,
+            pos,
+            style="dashed",
+            edgelist=dashed_edges,
+            width=2,
+            edge_color='black',
+            connectionstyle='arc3,rad=0'  # slight curve helps visibility
+        )
+
+        edge_labels = {}
+        for u, v, d in G.edges(data=True):
+            if "weight" in d:
+                edge_labels[(u, v)] = f"{d['weight']:.2f}"
         nx.draw_networkx_edge_labels(
             G,
             pos,
@@ -287,6 +306,275 @@ class Game:
         # Draw labels
         nx.draw_networkx_labels(G, pos, font_size=10)
 
+        plt.axis("off")
+        plt.show()
+
+    def plot_transition_matrix_most_probable_route_from_i_to_j(
+            self,
+            matrix,
+            states,
+            actions_symbols,
+            start_state,  # e.g. (0,0,0)
+            end_state,  # e.g. (1,1,1)
+            scale=1
+    ):
+        """
+        Plots ONLY the single most-probable path (max product of transition probabilities)
+        from `start_state` to `end_state`, showing only the nodes involved in that route.
+
+        The cost for each edge is computed as:
+            cost = -log(original_prob)
+        where original_prob is the unscaled transition probability.
+        This ensures non-negative costs for use in Dijkstra's algorithm.
+        The scaled probability (original_prob * scale) is used for visualization.
+        """
+        matrix = copy.deepcopy(matrix)
+        G = nx.DiGraph()
+
+        # Convert each state into a string label
+        states_string = []
+        for state in states:
+            label = "".join(actions_symbols[s] for s in state)
+            states_string.append(label)
+
+        # Add all states as nodes
+        for s in states_string:
+            G.add_node(s)
+
+        # Tie-breaking: for each pair, keep only the dominant transition.
+        for i in range(len(matrix)):
+            for j in range(len(matrix)):
+                if matrix[i, j] > matrix[j, i]:
+                    matrix[j, i] = -1
+                elif matrix[i, j] < matrix[j, i]:
+                    matrix[i, j] = -1
+
+        # Build edges in G:
+        #   - Only add edge if matrix[i, j] > -1 (i.e. it survived tie-breaking)
+        #   - Only add if Hamming distance between labels is 1
+        for i, s_i in enumerate(states_string):
+            for j, s_j in enumerate(states_string):
+                if i != j and matrix[i, j] > -1 and self._hamming_dist(s_i, s_j) == 1:
+                    original_prob = matrix[i, j]
+                    # Compute cost based on the original probability.
+                    if original_prob <= 0:
+                        cost = float('inf')
+                    else:
+                        cost = -math.log(original_prob)
+                    # For visualization, use the scaled probability.
+                    weight = original_prob * scale
+                    G.add_edge(s_i, s_j, weight=weight, cost=cost)
+
+        # Convert provided start and end states to labels
+        start_label = "".join(actions_symbols[s] for s in start_state)
+        end_label = "".join(actions_symbols[s] for s in end_state)
+
+        if start_label not in G.nodes or end_label not in G.nodes:
+            print(f"Start or end state not recognized: {start_label}, {end_label}")
+            return
+
+        # Find the most probable path using cost (i.e. maximizing the product of probabilities)
+        try:
+            path = nx.shortest_path(G, source=start_label, target=end_label, weight='cost')
+        except nx.NetworkXNoPath:
+            print(f"No path exists from {start_label} to {end_label}")
+            return
+
+        # Create a subgraph H with only the nodes and edges in the found path.
+        path_edges = list(zip(path, path[1:]))
+        H = nx.DiGraph()
+        for node in path:
+            H.add_node(node)
+        for (u, v) in path_edges:
+            if G.has_edge(u, v):
+                H.add_edge(u, v, **G[u][v])
+
+        # Compute node sizes based on incoming weights (for visualization)
+        in_weight_sum = {}
+        for node in H.nodes():
+            total_in = 0.0
+            for pred in H.predecessors(node):
+                edge_data = H.get_edge_data(pred, node)
+                if edge_data and "weight" in edge_data:
+                    total_in += edge_data["weight"]
+            in_weight_sum[node] = total_in
+
+        min_size = 300
+        scale_factor = 3000
+        node_sizes = [1500 for node in H.nodes()]
+        avg_node_size = sum(node_sizes) / len(node_sizes) if node_sizes else 300
+
+        # Plot the subgraph H
+        plt.figure(figsize=(int(len(path) * 1.5), int(len(path) * 1.5 * 0.8)))
+        pos = nx.circular_layout(H)
+        max_size = max(node_sizes) if node_sizes else 1.0
+        node_colors = [size / max_size for size in node_sizes]
+
+        nx.draw_networkx_nodes(
+            H,
+            pos,
+            node_size=node_sizes,
+            #node_color=node_colors,
+            edgecolors="black",
+#            cmap=plt.cm.Blues,
+           # vmin=0,
+           # vmax=1
+        )
+
+        arrow_len = 25 + 3 * (len(path) - 1)
+        nx.draw_networkx_edges(
+            H,
+            pos,
+            edgelist=list(H.edges()),
+            arrowstyle="->",
+            arrowsize=arrow_len,
+            width=2,
+            edge_color='red',  # highlight the path
+            connectionstyle='arc3,rad=0',
+            node_size=avg_node_size  # scalar value
+        )
+        nx.draw_networkx_labels(H, pos, font_size=10)
+
+        plt.axis("off")
+        plt.show()
+
+    def plot_transition_matrix_most_probable_route_from_i(
+            self,
+            matrix,
+            states,
+            actions_symbols,
+            start_state,  # e.g., (0, 0, 0)
+            scale=1
+    ):
+        """
+        Computes the most probable route starting from `start_state` using a greedy approach,
+        and plots only the nodes and edges involved in that route.
+
+        Parameters:
+            matrix: Transition matrix (e.g., a NumPy array) of probabilities.
+            states: A list of states (tuples or lists) corresponding to the rows/columns in matrix.
+            actions_symbols: Mapping from state components to string symbols for labeling.
+            start_state: The starting state (in the same format as in `states`).
+            scale: A scaling factor applied to transition probabilities for visualization.
+        """
+
+        # 1. Prepare the graph using a deep copy of the matrix
+        matrix = copy.deepcopy(matrix)
+        G = nx.DiGraph()
+
+        # Convert each state into a string label (by concatenating symbols)
+        states_string = []
+        for state in states:
+            label = "".join(actions_symbols[s] for s in state)
+            states_string.append(label)
+
+        # Add all states as nodes
+        for s in states_string:
+            G.add_node(s)
+
+        # Tie-breaking: For each pair, keep only the dominant transition.
+        for i in range(len(matrix)):
+            for j in range(len(matrix)):
+                if matrix[i, j] > matrix[j, i]:
+                    matrix[j, i] = -1
+                elif matrix[i, j] < matrix[j, i]:
+                    matrix[i, j] = -1
+
+        # 2. Build the graph: add an edge if
+        #    - matrix[i, j] > -1 (i.e. it survived tie-breaking)
+        #    - Hamming distance between state labels is 1 (using self._hamming_dist)
+        for i, s_i in enumerate(states_string):
+            for j, s_j in enumerate(states_string):
+                if i != j and matrix[i, j] > -1 and self._hamming_dist(s_i, s_j) == 1:
+                    prob = matrix[i, j] * scale  # use scaled probability for visualization
+                    G.add_edge(s_i, s_j, weight=prob)
+
+        # 3. Convert the provided start_state into its string label
+        start_label = "".join(actions_symbols[s] for s in start_state)
+        if start_label not in G.nodes:
+            print(f"Start state {start_label} not recognized.")
+            return
+
+        # 4. Greedily compute the most probable route:
+        # Start from start_label and at each step, choose the outgoing edge with the highest probability
+        route = [start_label]
+        current = start_label
+        while True:
+            # Get outgoing edges with data from the current node
+            out_edges = list(G.out_edges(current, data=True))
+            if not out_edges:
+                break  # no further moves
+
+            # Avoid cycles: filter out edges leading to nodes already in the route
+            valid_edges = [edge for edge in out_edges if edge[1] not in route]
+            if not valid_edges:
+                break
+
+            # Select the edge with the maximum probability ('weight')
+            next_edge = max(valid_edges, key=lambda e: e[2].get('weight', 0))
+            route.append(next_edge[1])
+            current = next_edge[1]
+
+        if len(route) < 2:
+            print("No route found from the starting state.")
+            return
+
+        # 5. Create a subgraph H containing only the nodes and edges of the computed route
+        path_edges = list(zip(route, route[1:]))
+        H = nx.DiGraph()
+        for node in route:
+            H.add_node(node)
+        for (u, v) in path_edges:
+            if G.has_edge(u, v):
+                H.add_edge(u, v, **G[u][v])
+
+        # 6. Compute node sizes based on incoming edge weights (for visualization)
+        in_weight_sum = {}
+        for node in H.nodes():
+            total_in = 0.0
+            for pred in H.predecessors(node):
+                edge_data = H.get_edge_data(pred, node)
+                if edge_data is not None and "weight" in edge_data:
+                    total_in += edge_data["weight"]
+            in_weight_sum[node] = total_in
+        min_size = 300
+        scale_factor = 1000
+        node_sizes = [1500 for node in H.nodes()]
+        avg_node_size = sum(node_sizes) / len(node_sizes) if node_sizes else 300
+
+        # 7. Plot the subgraph H (only the route)
+        plt.figure(figsize=(int(len(route) * 1.5), int(len(route) * 1.5 * 0.8)))
+        pos = nx.circular_layout(H)
+
+        # Normalize node sizes for the colormap
+        max_size = max(node_sizes) if node_sizes else 1.0
+        node_colors = [size / max_size for size in node_sizes]
+
+        nx.draw_networkx_nodes(
+            H,
+            pos,
+            node_size=node_sizes,
+            #node_color=node_colors,
+            edgecolors="black",
+            #cmap=plt.cm.Blues,
+          #  vmin=0,
+           # vmax=1
+        )
+
+        arrow_len = 25 + 3 * (len(route) - 1)
+        nx.draw_networkx_edges(
+            H,
+            pos,
+            edgelist=list(H.edges()),
+            arrowstyle="->",
+            arrowsize=arrow_len,
+            width=2,
+            edge_color='red',  # highlight the route
+            connectionstyle='arc3,rad=0',
+            node_size=avg_node_size  # use a scalar for edge drawing
+        )
+
+        nx.draw_networkx_labels(H, pos, font_size=10)
         plt.axis("off")
         plt.show()
 
