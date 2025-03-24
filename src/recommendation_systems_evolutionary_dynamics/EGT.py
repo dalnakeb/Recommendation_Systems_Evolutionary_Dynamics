@@ -8,6 +8,8 @@ from scipy.integrate import solve_ivp
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
+from matplotlib.colors import TwoSlopeNorm
 
 
 class Game:
@@ -655,10 +657,10 @@ class Game:
 
         elif process == "db" and not sync:
             res = self._death_birth_async(reps, steps, beta, mu, return_hist, print_rep_interval)
-            
+
         elif process == "pairwise" and not sync:
             res = self._pairwise_async(reps, steps, beta, mu, return_hist, print_rep_interval)
-            
+
         elif process == "pairwise" and sync:
             res = self._pairwise_sync(reps, steps, beta, mu, return_hist, print_rep_interval)
         else:
@@ -732,7 +734,7 @@ class Game:
         if return_hist:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
         return mean_fractionss_hist
-  
+
     def _birth_death_sync(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                            return_hist: bool = False, print_rep_interval: int = None):
 
@@ -777,7 +779,7 @@ class Game:
         if return_hist:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
         return mean_fractionss_hist
- 
+
     def _death_birth_async(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                            return_hist: bool = False, print_rep_interval: int = None):
 
@@ -824,7 +826,7 @@ class Game:
         if return_hist:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
         return mean_fractionss_hist
- 
+
     def _death_birth_sync(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                           return_hist: bool = False, print_rep_interval: int = None):
 
@@ -868,7 +870,7 @@ class Game:
         if return_hist:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
         return mean_fractionss_hist
- 
+
     def _pairwise_async(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                            return_hist: bool = False, print_rep_interval: int = None):
 
@@ -917,7 +919,7 @@ class Game:
         if return_hist:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
         return mean_fractionss_hist
- 
+
     def _pairwise_sync(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                           return_hist: bool = False, print_rep_interval: int = None):
 
@@ -968,13 +970,13 @@ class Game:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
         return mean_fractionss_hist
 
-    def plot_strategy_evol(self, fractionss_hist, action: int, xlabel: str = None,
+    def plot_strategy_evol(self, strategies_fractionss_hist, action: int, xlabel: str = None,
                        ylabel: str = None, title: str = None):
-        fractionss_hist = fractionss_hist[:, :, action]
-        timesteps = np.arange(fractionss_hist.shape[0])
+        strategies_fractionss_hist = strategies_fractionss_hist[:, :, action]
+        timesteps = np.arange(strategies_fractionss_hist.shape[0])
         plt.figure(figsize=(10, 6))
-        for col in range(fractionss_hist.shape[1]):
-            plt.plot(timesteps, fractionss_hist[:, col], label=self._players_names[col])
+        for col in range(strategies_fractionss_hist.shape[1]):
+            plt.plot(timesteps, strategies_fractionss_hist[:, col], label=self._players_names[col])
         plt.ylim(0, 1)
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
@@ -1143,84 +1145,161 @@ class Game:
         cbar.set_label(legend)
         plt.show()
 
-    def compute_replicator_dynamics(self, steps=50):
-        strategies_fractionss = copy.deepcopy(self._strategies_fractionss)
+    def compute_iterative_replicator_dynamics(self, dt, steps):
+        strategies_fractionss = np.array(self._strategies_fractionss)
+
         strategies_fractionss_hist = np.zeros((steps+1, self._n, len(self._actions)))
-        for s in range(self._n):
-            for i in range(len(self._actions)):
-                strategies_fractionss_hist[0, s, i] = strategies_fractionss[s][i]
-
-        for step in range(1, steps+1):
-            for s in range(self._n):
-                f_bar = sum([self.compute_fitness(s, i, strategies_fractionss)*strategies_fractionss[s][i] for i in range(len(self._actions))])
-                for i in range(len(self._actions)):
-                    f_i = self.compute_fitness(s, i, strategies_fractionss)
-                    x_i = strategies_fractionss[s][i]
-                    strategies_fractionss_hist[step, s, i] = x_i*(f_i - f_bar)
-
-            strategies_fractionss = strategies_fractionss_hist[step]
-
-        return strategies_fractionss_hist
-
-    def plot_replicator_dynamics(self, replicators, players_names=None, actions_names=None):
-        pass
-
-    def run_replicator_dynamics(self, steps=50,  players_names=None, actions_names=None):
-        strategies_fractionss = np.array(self._strategies_fractionss, dtype=float)
-
-        fractionss_hist = np.zeros((steps + 1, self._n, len(self._actions)))
-        fractionss_hist[0] = strategies_fractionss
-
-        for t in range(steps):
-            new_fractions = np.zeros_like(strategies_fractionss)
-
-            for i in range(self._n):
-                payoffs = []
-                for k in range(len(self._actions)):
-                    payoff_k = self.compute_fitness(i, k, strategies_fractionss)
-                    payoffs.append(payoff_k)
-                payoffs = np.array(payoffs, dtype=float)
-
-                # 2) (Optional) SHIFT payoffs if some are negative or if avg payoff might be <= 0
-                #    so that average payoff is safely positive:
-#                shift_amount = -payoffs.min()
- #               if shift_amount >= 0:
-  #                  payoffs += (shift_amount + 1e-12)
-
-                # 3) Compute the average payoff in population i:
-                #    dot product of strategies_fractionss[i] with the payoffs for each strategy
-                avg_payoff_i = np.dot(strategies_fractionss[i], payoffs)
-
-                # 4) Replicator update:
-                #    x_{i,k}(t+1) = x_{i,k}(t)*payoffs[k] / avg_payoff_i
-                if avg_payoff_i > 1e-12:
-                    new_fractions[i] = strategies_fractionss[i] * payoffs / avg_payoff_i
-                else:
-                    # If the average payoff is ~0, just hold the old distribution
-                    new_fractions[i] = strategies_fractionss[i]
-
-            # 5) Update strategies_fractionss for the next step
-            strategies_fractionss = new_fractions
-            fractionss_hist[t + 1] = strategies_fractionss
-
-        # --- Plotting ---
-        fig, axes = plt.subplots(1, self._n, figsize=(6 * self._n, 4), sharey=True)
-        if self._n == 1:
-            axes = [axes]  # Make it iterable if there's only one population
-
-        time_points = range(steps + 1)
+        gradients = np.zeros((steps+1, self._n, len(self._actions)))
         for i in range(self._n):
-            ax = axes[i]
-            for k in range(len(self._actions)):
-                ax.plot(time_points, fractionss_hist[:, i, k], label=f"{actions_names[k]}")
-            ax.set_title(f"{players_names[i]}")
-            ax.set_xlabel("Time")
-            ax.set_ylabel("Frequency")
-            ax.legend()
-            ax.grid(True)
+            strategies_fractionss_hist[0, i] = strategies_fractionss[i].copy()
+            gradients[0, i] = np.array([0 for k in range(len(self._actions))])
 
-        plt.tight_layout()
-        plt.show()
+        for s in range(1, steps+1):
+            for i in range(self._n):
+                fitnesses = np.array([self.compute_fitness(i, strat, strategies_fractionss) for strat in range(len(self._actions))])
+                avg_fitness = np.dot(strategies_fractionss[i, :], fitnesses)
+
+                for k in range(len(self._actions)):
+                    x_dot = strategies_fractionss[i, k] * (fitnesses[k] - avg_fitness)
+                    strategies_fractionss[i, k] = strategies_fractionss[i, k] + dt * x_dot
+                    gradients[s, i, k] = x_dot
+
+                total = np.sum(strategies_fractionss[i, :])
+                if total > 0:
+                    strategies_fractionss[i, :] = strategies_fractionss[i, :] / total
+                else:
+                    strategies_fractionss[i, :] = 1.0 / len(self._actions)
+
+            strategies_fractionss_hist[s] = strategies_fractionss.copy()
+
+        return strategies_fractionss_hist, gradients
+
+    def plot_replicator_dynamics_strategies_evol(self, strategies_fractionss_hist):
+        plt.figure(figsize=(8, 5))
+
+        for player in range(len(self._players_names)):
+            for strat_idx in range(len(self._actions_names)):
+                plt.plot(range(len(strategies_fractionss_hist[1:, 0, strat_idx])), strategies_fractionss_hist[1:, 0, strat_idx],
+                         label=f"Strategy {self._actions_names[strat_idx]}")
+            plt.xlabel("Time")
+            plt.ylabel("Strategy Fraction")
+            plt.title(f"Replicator Dynamics {self._players_names[player]}")
+            plt.legend()
+            plt.show()
+
+    def plot_replicator_dynamics_gradient_evol(self, strategies_fractionss_hist, gradient):
+        plt.figure(figsize=(8, 5))
+
+        for player in range(len(self._players_names)):
+            for strat_idx in range(len(self._actions_names)):
+                plt.plot(strategies_fractionss_hist[1:, 0, strat_idx], gradient[1:, 0, strat_idx],
+                         label=f"Strategy {self._actions_names[strat_idx]}")
+                plt.xlabel("Strategy Fraction")
+                plt.ylabel("Gradient of Selection")
+                plt.title(f"Replicator Dynamics {self._players_names[player]}")
+                plt.legend()
+                plt.show()
+
+    def plot_replicator_dynamics(self, strategies_fractionss_hist, derivations):
+        """
+        Plots replicator dynamics for each player and each strategy.
+        The line is color-coded according to the sign/magnitude of the gradient.
+        Equilibria (zero-crossings) are identified and classified as stable, unstable, or saddle.
+
+        Parameters:
+            strategies_fractionss_hist: np.ndarray of shape (T, n_pop, n_strat)
+                The history of strategy fractions over T time steps (or discrete iterations).
+            derivations: np.ndarray of shape (T, n_pop, n_strat)
+                The corresponding gradients of selection for each strategy at each time step.
+        """
+
+        n_pop = len(self._players_names)
+        n_strat = len(self._actions_names)
+
+        for player_idx in range(n_pop):
+            for strat_idx in range(n_strat):
+                x_data = strategies_fractionss_hist[:, player_idx, strat_idx]
+                grad_data = derivations[:, player_idx, strat_idx]
+
+                points = np.array([grad_data, x_data]).T.reshape(-1, 1, 2)
+                segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+                fig, ax = plt.subplots(figsize=(8, 5))
+
+                vmin = grad_data.min()
+                vmax = grad_data.max()
+                vabs = max(abs(vmin), abs(vmax))
+                norm = TwoSlopeNorm(vmin=-vabs, vcenter=0, vmax=vabs)
+
+                lc = LineCollection(segments, cmap='bwr', norm=norm)
+                lc.set_array(grad_data)
+                lc.set_linewidth(2)
+
+                line = ax.add_collection(lc)
+                cbar = plt.colorbar(line, ax=ax)
+                cbar.set_label("Gradient of Selection")
+
+                # Set axis limits
+                ax.set_xlim(x_data.min(), x_data.max())
+                ax.set_ylim(grad_data.min(), grad_data.max())
+
+                # 1) Find zero-crossings (equilibria)
+                """zero_points = []
+                for i in range(len(grad_data) - 1):
+                    # Exact zero
+                    if grad_data[i] == 0:
+                        zero_points.append((x_data[i], float(i)))
+                    # Sign change => crossing between i and i+1
+                    elif grad_data[i] * grad_data[i + 1] < 0:
+                        #alpha = grad_data[i] / (grad_data[i] - grad_data[i + 1])
+                        #xz = x_data[i] + alpha * (x_data[i + 1] - x_data[i])
+                        zero_points.append((x_data[i], 0))
+
+                # 2) Classify each zero crossing
+                for (xz, idx_float) in zero_points:
+                    idx_floor = int(np.floor(idx_float))
+                    # Approximate slope around the crossing
+                    if idx_floor <= 0 or idx_floor >= len(grad_data) - 1:
+                        slope = 0
+                    else:
+                        # Finite difference for slope
+                        slope_num = grad_data[idx_floor + 1] - grad_data[idx_floor - 1]
+                        denom = x_data[idx_floor + 1] - x_data[idx_floor - 1]
+                        if denom == 0:
+                            denom = 1e-9
+                        slope = slope_num / denom
+
+                    if slope < 0:
+                        classification = "Stable"
+                        color = "green"
+                        print(x_data[idx_floor], grad_data[idx_floor])
+
+                    elif slope > 0:
+                        classification = "Unstable"
+                        color = "red"
+                        print(x_data[idx_floor], grad_data[idx_floor])
+
+                    else:
+                        classification = "Saddle"
+                        color = "orange"
+                        print(x_data[idx_floor], grad_data[idx_floor])
+
+                    if x_data[idx_floor] == 0.0 or x_data[idx_floor] == 1.0:
+                        classification = ""
+                        color = "black"
+                        print(x_data[idx_floor], grad_data[idx_floor])
+
+                    # Plot a marker at the equilibrium
+                    ax.scatter(x_data[idx_floor], grad_data[idx_floor], color=color, zorder=5, s=60)
+                    ax.text(x_data[idx_floor], grad_data[idx_floor], f"{classification}\n{xz:.2f}",
+                            color=color, ha="center", va="bottom", fontsize=9)"""
+
+                ax.set_xlabel("Gradient of Selection")
+                ax.set_ylabel("Strategy Fraction")
+                ax.set_title(f"Replicator Dynamics {self._players_names[player_idx]} - "
+                             f"Strategy {self._actions_names[strat_idx]}")
+
+                plt.show()
 
     def set_strategies_counts(self, new_strategies_counts):
         self._strategies_counts = copy.deepcopy(new_strategies_counts)
