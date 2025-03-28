@@ -1119,7 +1119,7 @@ class Game:
         G3 = np.array(G3)
         return X, Y, Z, G1, G2, G3
 
-    def plot_gradient_of_selection(self, X, Y, Z, G1, G2, G3, title=None, players_names=None, fraction_name=None, legend=None):
+    def plot_gradient_of_selection(self, X, Y, Z, G1, G2, G3, title=None, players_names=None, fraction_name=None, legend=None, threshold=0.02):
         # Compute the magnitude of the gradient for each configuration.
         mag = np.sqrt(G1 ** 2 + G2 ** 2 + G3 ** 2)
         # Normalize magnitudes for the colormap.
@@ -1143,6 +1143,18 @@ class Game:
         sm.set_array([])  # Dummy array for the ScalarMappable.
         cbar = plt.colorbar(sm, ax=ax, pad=0.1)
         cbar.set_label(legend)
+
+        mask = (mag < threshold)
+        if np.any(mask):
+            # Plot them as black spheres or any style you prefer
+            ax.scatter(
+                X[mask], Y[mask], Z[mask],
+                c='k', s=40, marker='o',
+                label=f"Near zero gradient (<{threshold})"
+            )
+            # Show a legend entry
+            ax.legend()
+
         plt.show()
 
     def compute_iterative_replicator_dynamics(self, dt, steps):
