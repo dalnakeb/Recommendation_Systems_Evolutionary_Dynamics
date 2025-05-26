@@ -1,30 +1,32 @@
 import math
 import random
-from itertools import product
 import networkx as nx
 import itertools
 import copy
-from scipy.integrate import solve_ivp
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.collections import LineCollection
-from matplotlib.colors import TwoSlopeNorm
 
 
 class Game:
-    def __init__(self, strategies_counts: list[list[int]] = None, payoff_matrix=None, players_names=None, actions_names=None):
-        self._Zs = [sum(strat_count) for strat_count in strategies_counts]  # Population sizes for each player
+    def __init__(self, strategies_countss: list[list[int]] = None, payoff_matrix=None, players_names=None, actions_names=None):
+        """
+        :param strategies_countss: [[s11, s12], [s21, s22, s23], ...] where sij is the count of strategy j in population i
+        :param payoff_matrix: {(s1i, s2j, ...): [p1i, p2j, ...]} map each strategy combination to list of payoffs
+        :param players_names: [n1, n2, ...]
+        :param actions_names: [a1, a2, ...]
+        """
+        self._Zs = [sum(strat_count) for strat_count in strategies_countss]  # Population sizes for each player
         self._n = len(self._Zs)  # Number of players
 
-        self._strategies_counts = copy.deepcopy(strategies_counts)
-        self._strategies_fractionss = self._compute_fractions_from_counts(strategies_counts)
+        self._strategies_countss = copy.deepcopy(strategies_countss)
+        self._strategies_fractionss = self._compute_strategies_fractionss_from_countss(strategies_countss)
 
         assert self._parse_payoff_matrix(payoff_matrix), "Invalid payoff matrix format."
         self._payoff_matrix = payoff_matrix
         self._actions = [[i for i in range(len(strategies_fractions))] for strategies_fractions in self._strategies_fractionss]
         self._Ps = self._init_populations()
-        print(self._actions)
+
         if players_names is None:
             self._players_names = ["Player_"+str(i) for i in range(1, len(self._Zs)+1)]
         else:
@@ -32,8 +34,7 @@ class Game:
             self._players_names = copy.deepcopy(players_names)
 
         if actions_names is None:
-            self._actions_names = ["Action_" + str(i+1) + str(j+1) for i in range(len(self._strategies_fractionss)) for j in range(len(self._strategies_fractionss[i]))
-]
+            self._actions_names = ["Action_" + str(i+1) + str(j+1) for i in range(len(self._strategies_fractionss)) for j in range(len(self._strategies_fractionss[i]))]
         else:
             assert self._parse_actions_names(actions_names), "Invalid actions names"
             self._actions_names = copy.deepcopy(actions_names)
@@ -63,9 +64,14 @@ class Game:
         if not isinstance(payoff_matrix, dict):
             print("Payoff matrix must be a dict")
             return False
-        #if len(payoff_matrix) != len(self._strategies_counts[0]) ** self._n:
-         #   print("Payoff matrix must must have (number of actions ^ number of player) entries")
-         #   return False
+
+        strat_comb = 1
+        for i in range(len(self._strategies_fractionss)):
+            strat_comb *= len(self._strategies_fractionss[i])
+
+        if len(payoff_matrix) != strat_comb:
+            print("Payoff matrix must must have (number of actions ^ number of player) entries")
+            return False
 
         for key, value in payoff_matrix.items():
             if not (isinstance(key, tuple)):
@@ -100,7 +106,7 @@ class Game:
 
     def _init_populations(self):
         """Initialize populations for all players."""
-        return [self._init_population(counts) for counts in self._strategies_counts]
+        return [self._init_population(counts) for counts in self._strategies_countss]
 
     def compute_fitness(self, player, strategy, strategies_fractionss):
         all_strats = []
@@ -201,7 +207,7 @@ class Game:
         for state in states:
             state_string = ""
             for i in range(len(state)):
-                state_string += actions_symbols[state[i]]
+                state_string += actions_symbols[i][state[i]]
             states_string.append(state_string)
 
         # Add nodes
@@ -336,7 +342,7 @@ class Game:
         # Convert each state into a string label
         states_string = []
         for state in states:
-            label = "".join(actions_symbols[s] for s in state)
+            label = "".join(actions_symbols[i][s] for i, s in enumerate(state))
             states_string.append(label)
 
         # Add all states as nodes
@@ -368,8 +374,8 @@ class Game:
                     G.add_edge(s_i, s_j, weight=weight, cost=cost)
 
         # Convert provided start and end states to labels
-        start_label = "".join(actions_symbols[s] for s in start_state)
-        end_label = "".join(actions_symbols[s] for s in end_state)
+        start_label = "".join(actions_symbols[i][s] for i, s in enumerate(start_state))
+        end_label = "".join(actions_symbols[i][s] for i, s in enumerate(end_state))
 
         if start_label not in G.nodes or end_label not in G.nodes:
             print(f"Start or end state not recognized: {start_label}, {end_label}")
@@ -467,7 +473,7 @@ class Game:
         # Convert each state into a string label (by concatenating symbols)
         states_string = []
         for state in states:
-            label = "".join(actions_symbols[s] for s in state)
+            label = "".join(actions_symbols[i][s] for i, s in enumerate(state))
             states_string.append(label)
 
         # Add all states as nodes
@@ -492,7 +498,7 @@ class Game:
                     G.add_edge(s_i, s_j, weight=prob)
 
         # 3. Convert the provided start_state into its string label
-        start_label = "".join(actions_symbols[s] for s in start_state)
+        start_label = "".join(actions_symbols[i][s] for i, s in enumerate(start_state))
         if start_label not in G.nodes:
             print(f"Start state {start_label} not recognized.")
             return
@@ -602,7 +608,7 @@ class Game:
         for state in states:
             state_string = ""
             for i in range(len(state)):
-                state_string += actions_symbols[state[i]]
+                state_string += actions_symbols[i][state[i]]
             states_string.append(state_string)
 
         x_positions = np.arange(len(states_string))
@@ -617,9 +623,9 @@ class Game:
 
     def plot_stationary_distribution_per_pop(self, stationary_distribution, player:int, states: list[tuple[int]], actions_symbols: list[str], title: str, ylabel=None):
         def cooperator_defector_fraction(stationary_distribution, states_string, actions_symbols, player):
-            strategies_fractionss = np.zeros(len(actions_symbols))
+            strategies_fractionss = np.zeros(len(actions_symbols[player]))
             for i, st in enumerate(states_string):
-                strategies_fractionss[actions_symbols.index(st[player])] += stationary_distribution[i]
+                strategies_fractionss[actions_symbols[player].index(st[player])] += stationary_distribution[i]
 
             return strategies_fractionss
 
@@ -627,15 +633,14 @@ class Game:
         for state in states:
             state_string = ""
             for i in range(len(state)):
-                state_string += actions_symbols[state[i]]
+                state_string += actions_symbols[i][state[i]]
             states_string.append(state_string)
         colors = ["Red", "Blue", "Green", "Yellow"]
         fig, ax = plt.subplots(figsize=(5, 4))
         strategies_fractionss = cooperator_defector_fraction(stationary_distribution, states_string, actions_symbols, player=player)
-        ax.bar(range(len(actions_symbols)), strategies_fractionss, color=colors[0:len(actions_symbols)])
-        ax.set_xticks(range(len(actions_symbols)))
-        labels = list(set([a for sub in self._actions for a in sub]))
-        ax.set_xticklabels(labels)
+        ax.bar(range(len(actions_symbols[player])), strategies_fractionss, color=colors[0:len(actions_symbols[player])])
+        ax.set_xticks(range(len(actions_symbols[player])))
+        ax.set_xticklabels(self._actions_names[player])
         ax.set_ylim([0, 1])
         ax.set_ylabel(ylabel)
         ax.set_title(title)
@@ -692,30 +697,27 @@ class Game:
     def _birth_death_async(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                            return_hist: bool = False, print_rep_interval: int = None):
 
-        # old: strategies_fractionss_hist = np.zeros((rep, steps + 1, self._n, len(self._actions)))
         strategies_fractionss_hist = [
             np.zeros((rep, steps + 1, len(self._actions[s])))
             for s in range(self._n)
-        ]  # changed: one array per state so each can use its own action count
+        ]
 
         Ps_hist = [np.zeros((rep, steps + 1, self._Zs[s]), dtype=int) for s in range(self._n)]
-        print([strategies_fractionss_his.shape for strategies_fractionss_his in strategies_fractionss_hist])
+
         for r in range(rep):
             for s in range(self._n):
                 Ps_hist[s][r, 0] = self._Ps[s]
-                # old: strategies_fractionss_hist[r, 0, s] = self._strategies_fractionss[s]
-                strategies_fractionss_hist[s][r, 0] = self._strategies_fractionss[s]  # changed: index into state’s own history
+                strategies_fractionss_hist[s][r, 0] = self._strategies_fractionss[s]
 
         for r in range(rep):
             if (print_rep_interval is not None) and (r >= print_rep_interval) and (r % print_rep_interval == 0):
                 print(f"Replicate: {r}")
-            prev_Ps = [pop.copy() for pop in self._Ps]
-            prev_strategies_fractionss = [fracs.copy() for fracs in self._strategies_fractionss]
+            prev_Ps = [P.copy() for P in self._Ps]
+            prev_strategies_fractionss = [strategies_fractions.copy() for strategies_fractions in self._strategies_fractionss]
 
             for t in range(steps):
                 for s in range(self._n):
                     new_P = copy.deepcopy(prev_Ps[s])
-
                     probs = self.compute_probs_of_selection(s, new_P, prev_strategies_fractionss)
                     strat_i = np.random.choice(new_P, p=probs)
                     j = random.randint(0, len(new_P) - 1)
@@ -725,26 +727,17 @@ class Game:
                     fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
                     if random.random() < self._fermi_rule(fitness_j, fitness_i, beta):
                         if random.random() < mu:
-                            # old: new_P[j] = (new_P[j] + random.randint(0, len(self._actions) - 1)) % len(self._actions)
-                            new_P[j] = (
-                                               new_P[j]
-                                               + random.randint(0, len(self._actions[s]) - 1)
-                                       ) % len(self._actions[s])  # changed: use action count for state s
+                            new_P[j] = (new_P[j] + random.randint(0, len(self._actions[s]) - 1)) % len(self._actions[s])
                         else:
                             new_P[j] = strat_i
 
-                    new_strategies_fractions = self._compute_fractions_from_pop([new_P], s)
-
-                    # old: strategies_fractionss_hist[r, t + 1, s] = new_strategies_fractions[0]
-                    strategies_fractionss_hist[s][r, t + 1] = new_strategies_fractions[0]  # changed: per-state history
+                    new_strategies_fractions = self._compute_strategies_fractions_from_P(new_P, s)
+                    strategies_fractionss_hist[s][r, t + 1] = new_strategies_fractions
                     Ps_hist[s][r, t + 1] = np.array(new_P)
                     prev_Ps[s] = new_P
-                    prev_strategies_fractionss[s] = new_strategies_fractions[0]
+                    prev_strategies_fractionss[s] = new_strategies_fractions
 
-        # old: mean_fractionss_hist = np.mean(strategies_fractionss_hist, axis=0)
-        mean_fractionss_hist = [
-            np.mean(hist, axis=0) for hist in strategies_fractionss_hist
-        ]  # changed: compute each state’s mean separately
+        mean_fractionss_hist = [np.mean(hist, axis=0) for hist in strategies_fractionss_hist]
 
         if return_hist:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
@@ -753,25 +746,24 @@ class Game:
     def _birth_death_sync(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                           return_hist: bool = False, print_rep_interval: int = None):
 
-        # old: strategies_fractionss_hist = np.zeros((rep, steps + 1, self._n, len(self._actions)))
         strategies_fractionss_hist = [
             np.zeros((rep, steps + 1, len(self._actions[s])))
             for s in range(self._n)
-        ]  # changed: one history array per state
+        ]
 
         Ps_hist = [np.zeros((rep, steps + 1, self._Zs[s]), dtype=int) for s in range(self._n)]
 
         for r in range(rep):
             for s in range(self._n):
                 Ps_hist[s][r, 0] = self._Ps[s]
-                # old: strategies_fractionss_hist[r, 0, s] = self._strategies_fractionss[s]
-                strategies_fractionss_hist[s][r, 0] = self._strategies_fractionss[s]  # changed: state‐indexed
+                strategies_fractionss_hist[s][r, 0] = self._strategies_fractionss[s]
 
         for r in range(rep):
             if (print_rep_interval is not None) and (r >= print_rep_interval) and (r % print_rep_interval == 0):
                 print(f"Replicate: {r}")
-            prev_Ps = [pop.copy() for pop in self._Ps]
-            prev_strategies_fractionss = [fracs.copy() for fracs in self._strategies_fractionss]
+
+            prev_Ps = [P.copy() for P in self._Ps]
+            prev_strategies_fractionss = [strategies_fractions.copy() for strategies_fractions in self._strategies_fractionss]
 
             for t in range(steps):
                 new_Ps = copy.deepcopy(prev_Ps)
@@ -783,26 +775,19 @@ class Game:
                         fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
                         if random.random() < self._fermi_rule(fitness_j, fitness_i, beta):
                             if random.random() < mu:
-                                # old: new_Ps[s][j] = (new_Ps[s][j] + random.randint(0, len(self._actions) - 1)) % len(self._actions)
-                                new_Ps[s][j] = (
-                                                       new_Ps[s][j] + random.randint(0, len(self._actions[s]) - 1)
-                                               ) % len(self._actions[s])  # changed: per‐state action count
+                                new_Ps[s][j] = (new_Ps[s][j] + random.randint(0, len(self._actions[s]) - 1)) % len(self._actions[s])
                             else:
                                 new_Ps[s][j] = strat_i
 
                 prev_Ps = new_Ps
-                new_strategies_fractions = self._compute_fractions_from_pop(new_Ps)
-                prev_strategies_fractionss = new_strategies_fractions
-                # old: strategies_fractionss_hist[r, t + 1] = new_strategies_fractions
+                new_strategies_fractionss = self._compute_strategies_fractionss_from_Ps(new_Ps)
+                prev_strategies_fractionss = new_strategies_fractionss
                 for s in range(self._n):
-                    strategies_fractionss_hist[s][r, t + 1] = new_strategies_fractions[s]  # changed: state‐by‐state
+                    strategies_fractionss_hist[s][r, t + 1] = new_strategies_fractionss[s]
                 for s in range(self._n):
                     Ps_hist[s][r, t + 1] = np.array(new_Ps[s])
 
-        # old: mean_fractionss_hist = np.mean(strategies_fractionss_hist, axis=0)
-        mean_fractionss_hist = [
-            np.mean(hist, axis=0) for hist in strategies_fractionss_hist
-        ]  # changed: compute per‐state means
+        mean_fractionss_hist = [np.mean(hist, axis=0) for hist in strategies_fractionss_hist]
 
         if return_hist:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
@@ -811,25 +796,23 @@ class Game:
     def _death_birth_async(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                            return_hist: bool = False, print_rep_interval: int = None):
 
-        # old: strategies_fractionss_hist = np.zeros((rep, steps + 1, self._n, len(self._actions)))
         strategies_fractionss_hist = [
             np.zeros((rep, steps + 1, len(self._actions[s])))
             for s in range(self._n)
-        ]  # changed: one history array per state
+        ]
 
         Ps_hist = [np.zeros((rep, steps + 1, self._Zs[s]), dtype=int) for s in range(self._n)]
 
         for r in range(rep):
             for s in range(self._n):
                 Ps_hist[s][r, 0] = self._Ps[s]
-                # old: strategies_fractionss_hist[r, 0, s] = self._strategies_fractionss[s]
-                strategies_fractionss_hist[s][r, 0] = self._strategies_fractionss[s]  # changed: state‐indexed
+                strategies_fractionss_hist[s][r, 0] = self._strategies_fractionss[s]
 
         for r in range(rep):
             if (print_rep_interval is not None) and (r >= print_rep_interval) and (r % print_rep_interval == 0):
                 print(f"Replicate: {r}")
-            prev_Ps = [pop.copy() for pop in self._Ps]
-            prev_strategies_fractionss = [fracs.copy() for fracs in self._strategies_fractionss]
+            prev_Ps = [P.copy() for P in self._Ps]
+            prev_strategies_fractionss = [strategies_fractions.copy() for strategies_fractions in self._strategies_fractionss]
 
             for t in range(steps):
                 for s in range(self._n):
@@ -844,24 +827,17 @@ class Game:
                     fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
                     if random.random() < self._fermi_rule(fitness_i, fitness_j, beta):
                         if random.random() < mu:
-                            # old: new_P[i] = (new_P[i] + random.randint(0, len(self._actions) - 1)) % len(self._actions)
-                            new_P[i] = (
-                                               new_P[i] + random.randint(0, len(self._actions[s]) - 1)
-                                       ) % len(self._actions[s])  # changed: per‐state action count
+                            new_P[i] = (new_P[i] + random.randint(0, len(self._actions[s]) - 1)) % len(self._actions[s])
                         else:
                             new_P[i] = strat_j
 
-                    new_strategies_fractions = self._compute_fractions_from_pop([new_P])
-                    # old: strategies_fractionss_hist[r, t + 1, s] = new_strategies_fractions[0]
-                    strategies_fractionss_hist[s][r, t + 1] = new_strategies_fractions[0]  # changed: state‐indexed
+                    new_strategies_fractions = self._compute_strategies_fractions_from_P(new_P, s)
+                    strategies_fractionss_hist[s][r, t + 1] = new_strategies_fractions
                     Ps_hist[s][r, t + 1] = np.array(new_P)
                     prev_Ps[s] = new_P
-                    prev_strategies_fractionss[s] = new_strategies_fractions[0]
+                    prev_strategies_fractionss[s] = new_strategies_fractions
 
-        # old: mean_fractionss_hist = np.mean(strategies_fractionss_hist, axis=0)
-        mean_fractionss_hist = [
-            np.mean(hist, axis=0) for hist in strategies_fractionss_hist
-        ]  # changed: compute per‐state means
+        mean_fractionss_hist = [np.mean(hist, axis=0) for hist in strategies_fractionss_hist]
 
         if return_hist:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
@@ -870,25 +846,23 @@ class Game:
     def _death_birth_sync(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                           return_hist: bool = False, print_rep_interval: int = None):
 
-        # old: strategies_fractionss_hist = np.zeros((rep, steps + 1, self._n, len(self._actions)))
         strategies_fractionss_hist = [
             np.zeros((rep, steps + 1, len(self._actions[s])))
             for s in range(self._n)
-        ]  # changed: one history array per state
+        ]
 
         Ps_hist = [np.zeros((rep, steps + 1, self._Zs[s]), dtype=int) for s in range(self._n)]
 
         for r in range(rep):
             for s in range(self._n):
                 Ps_hist[s][r, 0] = self._Ps[s]
-                # old: strategies_fractionss_hist[r, 0, s] = self._strategies_fractionss[s]
                 strategies_fractionss_hist[s][r, 0] = self._strategies_fractionss[s]  # changed: state‐indexed
 
         for r in range(rep):
             if (print_rep_interval is not None) and (r >= print_rep_interval) and (r % print_rep_interval == 0):
                 print(f"Replicate: {r}")
-            prev_Ps = [pop.copy() for pop in self._Ps]
-            prev_strategies_fractionss = [fracs.copy() for fracs in self._strategies_fractionss]
+            prev_Ps = [P.copy() for P in self._Ps]
+            prev_strategies_fractionss = [strategies_fractions.copy() for strategies_fractions in self._strategies_fractionss]
 
             for t in range(steps):
                 new_Ps = copy.deepcopy(prev_Ps)
@@ -900,26 +874,19 @@ class Game:
                         fitness_j = self.compute_fitness(s, strat_j, prev_strategies_fractionss)
                         if random.random() < self._fermi_rule(fitness_i, fitness_j, beta):
                             if random.random() < mu:
-                                # old: new_Ps[s][i] = (new_Ps[s][i] + random.randint(0, len(self._actions) - 1)) % len(self._actions)
-                                new_Ps[s][i] = (
-                                                       new_Ps[s][i] + random.randint(0, len(self._actions[s]) - 1)
-                                               ) % len(self._actions[s])  # changed: per‐state action count
+                                new_Ps[s][i] = (new_Ps[s][i] + random.randint(0, len(self._actions[s]) - 1)) % len(self._actions[s])
                             else:
                                 new_Ps[s][i] = strat_j
 
                 prev_Ps = new_Ps
-                new_strategies_fractions = self._compute_fractions_from_pop(new_Ps)
-                prev_strategies_fractionss = new_strategies_fractions
-                # old: strategies_fractionss_hist[r, t + 1] = new_strategies_fractions
+                new_strategies_fractionss = self._compute_strategies_fractionss_from_Ps(new_Ps)
+                prev_strategies_fractionss = new_strategies_fractionss
                 for s in range(self._n):
-                    strategies_fractionss_hist[s][r, t + 1] = new_strategies_fractions[s]  # changed: state‐indexed
+                    strategies_fractionss_hist[s][r, t + 1] = new_strategies_fractionss[s]
                 for s in range(self._n):
                     Ps_hist[s][r, t + 1] = np.array(new_Ps[s])
 
-        # old: mean_fractionss_hist = np.mean(strategies_fractionss_hist, axis=0)
-        mean_fractionss_hist = [
-            np.mean(hist, axis=0) for hist in strategies_fractionss_hist
-        ]  # changed: compute per‐state means
+        mean_fractionss_hist = [np.mean(hist, axis=0) for hist in strategies_fractionss_hist]
 
         if return_hist:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
@@ -928,25 +895,23 @@ class Game:
     def _pairwise_async(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                         return_hist: bool = False, print_rep_interval: int = None):
 
-        # old: strategies_fractionss_hist = np.zeros((rep, steps + 1, self._n, len(self._actions)))
         strategies_fractionss_hist = [
             np.zeros((rep, steps + 1, len(self._actions[s])))
             for s in range(self._n)
-        ]  # changed: one history array per state
+        ]
 
         Ps_hist = [np.zeros((rep, steps + 1, self._Zs[s]), dtype=int) for s in range(self._n)]
 
         for r in range(rep):
             for s in range(self._n):
                 Ps_hist[s][r, 0] = self._Ps[s]
-                # old: strategies_fractionss_hist[r, 0, s] = self._strategies_fractionss[s]
                 strategies_fractionss_hist[s][r, 0] = self._strategies_fractionss[s]  # changed: state‐indexed
 
         for r in range(rep):
             if (print_rep_interval is not None) and (r >= print_rep_interval) and (r % print_rep_interval == 0):
                 print(f"Replicate: {r}")
-            prev_Ps = [pop.copy() for pop in self._Ps]
-            prev_strategies_fractionss = [fracs.copy() for fracs in self._strategies_fractionss]
+            prev_Ps = [P.copy() for P in self._Ps]
+            prev_strategies_fractionss = [strategies_fractions.copy() for strategies_fractions in self._strategies_fractionss]
 
             for t in range(steps):
                 for s in range(self._n):
@@ -959,32 +924,22 @@ class Game:
 
                     if random.random() < self._fermi_rule(fitness_i, fitness_j, beta):
                         if random.random() < mu:
-                            # old: new_P[i] = (new_P[i] + random.randint(0, len(self._actions) - 1)) % len(self._actions)
-                            new_P[i] = (
-                                               new_P[i] + random.randint(0, len(self._actions[s]) - 1)
-                                       ) % len(self._actions[s])  # changed: per‐state action count
+                            new_P[i] = (new_P[i] + random.randint(0, len(self._actions[s]) - 1)) % len(self._actions[s])
                         else:
                             new_P[i] = strat_j
                     else:
                         if random.random() < mu:
-                            # old: new_P[j] = (new_P[j] + random.randint(0, len(self._actions) - 1)) % len(self._actions)
-                            new_P[j] = (
-                                               new_P[j] + random.randint(0, len(self._actions[s]) - 1)
-                                       ) % len(self._actions[s])  # changed: per‐state action count
+                            new_P[j] = (new_P[j] + random.randint(0, len(self._actions[s]) - 1)) % len(self._actions[s])
                         else:
                             new_P[j] = strat_i
 
-                    new_strategies_fractions = self._compute_fractions_from_pop([new_P])
-                    # old: strategies_fractionss_hist[r, t + 1, s] = new_strategies_fractions[0]
-                    strategies_fractionss_hist[s][r, t + 1] = new_strategies_fractions[0]  # changed: state‐indexed
+                    new_strategies_fractions = self._compute_strategies_fractions_from_P(new_P, s)
+                    strategies_fractionss_hist[s][r, t + 1] = new_strategies_fractions
                     Ps_hist[s][r, t + 1] = np.array(new_P)
                     prev_Ps[s] = new_P
-                    prev_strategies_fractionss[s] = new_strategies_fractions[0]
+                    prev_strategies_fractionss[s] = new_strategies_fractions
 
-        # old: mean_fractionss_hist = np.mean(strategies_fractionss_hist, axis=0)
-        mean_fractionss_hist = [
-            np.mean(hist, axis=0) for hist in strategies_fractionss_hist
-        ]  # changed: compute per‐state means
+        mean_fractionss_hist = [np.mean(hist, axis=0) for hist in strategies_fractionss_hist]
 
         if return_hist:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
@@ -993,25 +948,23 @@ class Game:
     def _pairwise_sync(self, rep: int = 1, steps: int = 50, beta: float = 1, mu: float = 0.01,
                        return_hist: bool = False, print_rep_interval: int = None):
 
-        # old: strategies_fractionss_hist = np.zeros((rep, steps + 1, self._n, len(self._actions)))
         strategies_fractionss_hist = [
             np.zeros((rep, steps + 1, len(self._actions[s])))
             for s in range(self._n)
-        ]  # changed: one history array per state
+        ]
 
         Ps_hist = [np.zeros((rep, steps + 1, self._Zs[s]), dtype=int) for s in range(self._n)]
 
         for r in range(rep):
             for s in range(self._n):
                 Ps_hist[s][r, 0] = self._Ps[s]
-                # old: strategies_fractionss_hist[r, 0, s] = self._strategies_fractionss[s]
                 strategies_fractionss_hist[s][r, 0] = self._strategies_fractionss[s]  # changed: state‐indexed
 
         for r in range(rep):
             if (print_rep_interval is not None) and (r >= print_rep_interval) and (r % print_rep_interval == 0):
                 print(f"Replicate: {r}")
-            prev_Ps = [pop.copy() for pop in self._Ps]
-            prev_strategies_fractionss = [fracs.copy() for fracs in self._strategies_fractionss]
+            prev_Ps = [P.copy() for P in self._Ps]
+            prev_strategies_fractionss = [strategies_fractions.copy() for strategies_fractions in self._strategies_fractionss]
 
             for t in range(steps):
                 new_Ps = copy.deepcopy(prev_Ps)
@@ -1024,58 +977,36 @@ class Game:
 
                         if random.random() < self._fermi_rule(fitness_j, fitness_i, beta):
                             if random.random() < mu:
-                                # old: new_Ps[s][j] = (new_Ps[s][j] + random.randint(0, len(self._actions) - 1)) % len(self._actions)
-                                new_Ps[s][j] = (
-                                                       new_Ps[s][j] + random.randint(0, len(self._actions[s]) - 1)
-                                               ) % len(self._actions[s])  # changed: per‐state action count
+                                new_Ps[s][j] = (new_Ps[s][j] + random.randint(0, len(self._actions[s]) - 1)) % len(self._actions[s])
                             else:
                                 new_Ps[s][j] = strat_i
                         else:
                             if random.random() < mu:
-                                # old: new_Ps[s][i] = (new_Ps[s][i] + random.randint(0, len(self._actions) - 1)) % len(self._actions)
-                                new_Ps[s][i] = (
-                                                       new_Ps[s][i] + random.randint(0, len(self._actions[s]) - 1)
-                                               ) % len(self._actions[s])  # changed: per‐state action count
+                                new_Ps[s][i] = (new_Ps[s][i] + random.randint(0, len(self._actions[s]) - 1)) % len(self._actions[s])
                             else:
                                 new_Ps[s][i] = strat_j
 
                 prev_Ps = new_Ps
-                new_strategies_fractions = self._compute_fractions_from_pop(new_Ps)
-                prev_strategies_fractionss = new_strategies_fractions
-                # old: strategies_fractionss_hist[r, t + 1] = new_strategies_fractions
+                new_strategies_fractionss = self._compute_strategies_fractionss_from_Ps(new_Ps)
+                prev_strategies_fractionss = new_strategies_fractionss
                 for s in range(self._n):
-                    strategies_fractionss_hist[s][r, t + 1] = new_strategies_fractions[s]  # changed: state‐indexed
+                    strategies_fractionss_hist[s][r, t + 1] = new_strategies_fractionss[s]  # changed: state‐indexed
                 for s in range(self._n):
                     Ps_hist[s][r, t + 1] = np.array(new_Ps[s])
 
-        # old: mean_fractionss_hist = np.mean(strategies_fractionss_hist, axis=0)
-        mean_fractionss_hist = [
-            np.mean(hist, axis=0) for hist in strategies_fractionss_hist
-        ]  # changed: compute per‐state means
+        mean_fractionss_hist = [np.mean(hist, axis=0) for hist in strategies_fractionss_hist]
 
         if return_hist:
             return mean_fractionss_hist, strategies_fractionss_hist, Ps_hist
         return mean_fractionss_hist
 
-    def _count_strategies_from_pop(self, Ps, s):
-        strategies_counts = []
-
-        for P in Ps:
-            # old: counts = [0]*(len(self._actions))
-            counts = [0] * len(self._actions[s])  # changed: use per‐state action count
-            for strat in P:
-                counts[strat] += 1
-            strategies_counts.append(counts)
-        return strategies_counts
-
-    def plot_strategy_evol(self, strategies_fractionss_hist, action: int, xlabel: str = None,
+    def plot_strategy_evol(self, strategies_fractionss_hist, actions: [int], xlabel: str = None,
                        ylabel: str = None, title: str = None):
-        strategies_fractionss_hist = [hist[:, :, action] for hist in strategies_fractionss_hist]
-       # strategies_fractionss_hist = strategies_fractionss_hist[:, :, action]
-        timesteps = np.arange(strategies_fractionss_hist.shape[0])
+        strategies_fractionss_hist = [strategies_fractions_hist[:, actions[i]] for i, strategies_fractions_hist in enumerate(strategies_fractionss_hist)]
+        timesteps = np.arange(len(strategies_fractionss_hist[0]))
         plt.figure(figsize=(10, 6))
-        for col in range(strategies_fractionss_hist.shape[1]):
-            plt.plot(timesteps, strategies_fractionss_hist[:, col], label=self._players_names[col])
+        for col in range(self._n):
+            plt.plot(timesteps, strategies_fractionss_hist[col], label=self._players_names[col] + " Strategy: " + str(self._actions_names[col][actions[col]]))
         plt.ylim(0, 1)
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
@@ -1114,46 +1045,67 @@ class Game:
         return self._Ps
 
     def _count_strategies_from_fractions(self, strategies_fractionss):
-        strategies_counts = []
+        strategies_countss = []
         for i, pop in enumerate(strategies_fractionss):
-            strategies_counts.append([])
+            strategies_countss.append([])
             for frac in pop:
-                strategies_counts[i].append(int(self._Zs[i] * frac))
-            while sum(strategies_counts[i]) < self._Zs[i]:
-                m = len(strategies_counts[i]) - 1
-                strategies_counts[i][random.randint(0, m)] += 1
-            while sum(strategies_counts[i]) > self._Zs[i]:
-                m = len(strategies_counts[i]) - 1
-                strategies_counts[i][random.randint(0, m)] -= 1
-        return strategies_counts
+                strategies_countss[i].append(int(self._Zs[i] * frac))
+            while sum(strategies_countss[i]) < self._Zs[i]:
+                m = len(strategies_countss[i]) - 1
+                strategies_countss[i][random.randint(0, m)] += 1
+            while sum(strategies_countss[i]) > self._Zs[i]:
+                m = len(strategies_countss[i]) - 1
+                strategies_countss[i][random.randint(0, m)] -= 1
+        return strategies_countss
 
-    def _count_strategies_from_pop(self, Ps, s):
-        strategies_counts = []
+    def _compute_strategies_countss_from_Ps(self, Ps):
+        strategies_countss = []
 
-        for P in Ps:
-            # old: counts = [0]*(len(self._actions))
-            counts = [0] * len(self._actions[s])  # changed: use per‐state action count
+        for i, P in enumerate(Ps):
+            counts = [0] * len(self._actions[i])
             for strat in P:
                 counts[strat] += 1
-            strategies_counts.append(counts)
+            strategies_countss.append(counts)
+
+        return strategies_countss
+
+    def _compute_strategies_counts_from_P(self, P, s):
+        strategies_counts = [0] * len(self._actions[s])
+        for strat in P:
+            strategies_counts[strat] += 1
 
         return strategies_counts
 
-    def _compute_fractions_from_counts(self, strategies_counts):
+    def _compute_strategies_fractionss_from_countss(self, strategies_countss):
         strategies_fractionss = []
-        for i, pop in enumerate(strategies_counts):
+        for i, pop in enumerate(strategies_countss):
             strategies_fractionss.append([])
             for count in pop:
                 strategies_fractionss[i].append(round(float(count / self._Zs[i]), 4))
             if sum(strategies_fractionss[i]) != 1:
-                m = random.randint(0, len(strategies_counts[i]) - 1)
+                m = random.randint(0, len(strategies_countss[i]) - 1)
                 strategies_fractionss[i][m] = round(strategies_fractionss[i][m] + 1 - sum(strategies_fractionss[i]), 4)
 
         return strategies_fractionss
 
-    def _compute_fractions_from_pop(self, Ps, s):
-        strategies_count = self._count_strategies_from_pop(Ps, s)
-        strategies_fractionss = self._compute_fractions_from_counts(strategies_count)
+    def _compute_strategies_fractions_from_counts(self, strategies_counts, s):
+        strategies_fractions = []
+        for count in strategies_counts:
+            strategies_fractions.append(round(float(count / self._Zs[s]), 4))
+        if sum(strategies_fractions) != 1:
+            m = random.randint(0, len(strategies_counts) - 1)
+            strategies_fractions[m] = round(strategies_fractions[m] + 1 - sum(strategies_fractions), 4)
+
+        return strategies_fractions
+
+    def _compute_strategies_fractionss_from_Ps(self, Ps):
+        strategies_countss = self._compute_strategies_countss_from_Ps(Ps)
+        strategies_fractionss = self._compute_strategies_fractionss_from_countss(strategies_countss)
+        return strategies_fractionss
+
+    def _compute_strategies_fractions_from_P(self, P, s):
+        strategies_counts = self._compute_strategies_counts_from_P(P, s)
+        strategies_fractionss = self._compute_strategies_fractions_from_counts(strategies_counts, s)
         return strategies_fractionss
     # Setters
 
@@ -1312,12 +1264,12 @@ class Game:
                 plt.show()
 
     def set_strategies_counts(self, new_strategies_counts):
-        self._strategies_counts = copy.deepcopy(new_strategies_counts)
-        self._strategies_fractionss = self._compute_fractions_from_counts(self._strategies_counts)
+        self._strategies_countss = copy.deepcopy(new_strategies_counts)
+        self._strategies_fractionss = self._compute_strategies_fractionss_from_countss(self._strategies_countss)
 
     def set_strategies_fractionss(self, new_strategies_fractionss):
         self._strategies_fractionss = copy.deepcopy(new_strategies_fractionss)
-        self._strategies_counts = self._count_strategies_from_fractions(self._strategies_counts)
+        self._strategies_countss = self._count_strategies_from_fractions(self._strategies_countss)
 
     def set_players_names(self, new_players_names):
         assert self._parse_players_names(new_players_names), "Invalid players names"
@@ -1329,46 +1281,4 @@ class Game:
 
 
 if __name__ == "__main__":
-    strategies_counts = [[25, 25, 25, 25], [25, 25], [25, 25]]
-    actions_names = [["Low", "High", "watch", "skip"], ["Low", "High"], ["Low", "High"]]
-    players_names = ["Consumer", "Platform", "Provider"]
-    actions_symbols = [["L", "H", "W", "S"], ["L", "H"], ["L", "H"]]
-
-    a = 0.2
-    rl = 0.2
-    rh = 0.1
-    br = 0.4  # or 0.2 or 0.0
-    cl = 0.05
-    ch = 0.15
-    ul = 0.2
-    uh = 0.4
-
-    payoff_watch_time = {
-        (0, 0, 0): [rl, -br, -cl],
-        (0, 0, 1): [0, 0, -ch],
-        (0, 1, 0): [0, 0, -cl],
-        (0, 1, 1): [0, 0, -ch],
-        (1, 0, 0): [0, -br, -cl],
-        (1, 0, 1): [0, 0, -ch],
-        (1, 1, 0): [0, 0, -cl],
-        (1, 1, 1): [rh, 0, -ch],
-
-        (2, 0, 0): [rl + ul, a - br, a - cl],
-        (2, 0, 1): [0, 0, -ch],
-        (2, 1, 0): [0, 0, -cl],
-        (2, 1, 1): [0, 0, -ch],
-        (3, 0, 0): [0, -br, -cl],
-        (3, 0, 1): [0, 0, -ch],
-        (3, 1, 0): [0, 0, -cl],
-        (3, 1, 1): [rh + uh, a, a - ch]
-    }
-
-    payoff_matrix = payoff_watch_time
-
-    game = Game(strategies_counts=strategies_counts, payoff_matrix=payoff_matrix, actions_names=actions_names,
-                players_names=players_names)
-
-    Ps = game.get_populations()
-  #  for i, P in enumerate(Ps):
-#        print(f"P{i}: {np.unique_counts(P)}")
-    print(list(game.get_payoff_matrix().keys()))
+    pass
