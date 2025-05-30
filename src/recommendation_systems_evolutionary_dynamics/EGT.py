@@ -602,7 +602,7 @@ class Game:
 
         return stationary
 
-    def plot_stationary_distribution_all_pop(self, stationary_distribution, states: list[tuple[int]], actions_symbols: list[str], title: str, ylabel=None):
+    def plot_stationary_distribution_all_pop(self, stationary_distribution, states: list[tuple[int]], actions_symbols: list[str], title: str, ylabel=None, red: [int] = None, green: [int] = None):
         fig, ax = plt.subplots(figsize=(5+len(states)//4, 4+len(states)//5))
         states_string = []
         for state in states:
@@ -611,8 +611,18 @@ class Game:
                 state_string += actions_symbols[i][state[i]]
             states_string.append(state_string)
 
+        colors = []
+        print(states, green, red)
+        for label in states:
+            if label in red:
+                colors.append("red")
+            elif label in green:
+                colors.append("green")
+            else:
+                colors.append("gray")
+        print(colors)
         x_positions = np.arange(len(states_string))
-        ax.bar(x_positions, stationary_distribution, color='gray')
+        ax.bar(x_positions, stationary_distribution, color=colors)
         ax.set_xticks(x_positions)
         ax.set_xticklabels(states_string, rotation=45)
         ax.set_ylim([0, 1])
@@ -1023,6 +1033,7 @@ class Game:
         unique_states, counts = np.unique(states, return_counts=True)
         fractions = counts / sum(counts)
         most_common_idx = int(np.argmax(fractions))
+
         plt.plot(unique_states, fractions)
         plt.scatter(unique_states[most_common_idx], fractions[most_common_idx], color="red",
                     label=f"Most Common State ({unique_states[most_common_idx]}, {fractions[most_common_idx]:.4f})")
