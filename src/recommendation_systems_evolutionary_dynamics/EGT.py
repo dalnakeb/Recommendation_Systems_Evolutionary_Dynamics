@@ -40,7 +40,6 @@ class Game:
             self._actions_names = copy.deepcopy(actions_names)
 
     def _parse_actions_names(self, actions_names):
-        print(actions_names, self._strategies_fractionss)
         if not isinstance(actions_names, list):
             return False
         if not all(len(actions_names[i]) == len(self._strategies_fractionss[i]) for i in range(len(self._strategies_fractionss))):
@@ -176,7 +175,6 @@ class Game:
         num_states = len(states)
         m = np.zeros((num_states, num_states))
         for i in range(num_states):
-            print(i)
             state_i = states[i]
             for j in range(num_states):
                 state_j = states[j]
@@ -200,7 +198,7 @@ class Game:
             m[i, i] = 1 - s
         return m, states
 
-    def plot_transition_matrix(self, matrix, states, actions_symbols, scale=1):
+    def plot_transition_matrix(self, matrix, states, actions_symbols, scale=1, save_file_name=None):
         matrix = copy.deepcopy(matrix)
         G = nx.DiGraph()
         states_string = []
@@ -315,6 +313,9 @@ class Game:
         nx.draw_networkx_labels(G, pos, font_size=10)
 
         plt.axis("off")
+        if save_file_name is not None:
+            plt.savefig(save_file_name)
+
         plt.show()
 
     def plot_transition_matrix_most_probable_route_from_i_to_j(
@@ -602,7 +603,7 @@ class Game:
 
         return stationary
 
-    def plot_stationary_distribution_all_pop(self, stationary_distribution, states: list[tuple[int]], actions_symbols: list[str], title: str, ylabel=None, red: [int] = None, green: [int] = None):
+    def plot_stationary_distribution_all_pop(self, stationary_distribution, states: list[tuple[int]], actions_symbols: list[str], title: str, ylabel=None, red: [int] = None, green: [int] = None, save_file_name=None):
         fig, ax = plt.subplots(figsize=(5+len(states)//4, 4+len(states)//5))
         states_string = []
         for state in states:
@@ -612,7 +613,6 @@ class Game:
             states_string.append(state_string)
 
         colors = []
-        print(states, green, red)
         for label in states:
             if label in red:
                 colors.append("red")
@@ -620,7 +620,6 @@ class Game:
                 colors.append("green")
             else:
                 colors.append("gray")
-        print(colors)
         x_positions = np.arange(len(states_string))
         ax.bar(x_positions, stationary_distribution, color=colors)
         ax.set_xticks(x_positions)
@@ -629,9 +628,13 @@ class Game:
         ax.set_title(title)
         ax.set_ylabel(ylabel)
         plt.tight_layout()
+        if save_file_name is not None:
+            plt.savefig(save_file_name)
+
         plt.show()
 
-    def plot_stationary_distribution_per_pop(self, stationary_distribution, player:int, states: list[tuple[int]], actions_symbols: list[str], title: str, ylabel=None):
+
+    def plot_stationary_distribution_per_pop(self, stationary_distribution, player:int, states: list[tuple[int]], actions_symbols: list[str], title: str, ylabel=None, save_file_name=None):
         def cooperator_defector_fraction(stationary_distribution, states_string, actions_symbols, player):
             strategies_fractionss = np.zeros(len(actions_symbols[player]))
             for i, st in enumerate(states_string):
@@ -655,6 +658,9 @@ class Game:
         ax.set_ylabel(ylabel)
         ax.set_title(title)
         plt.tight_layout()
+        if save_file_name is not None:
+            plt.savefig(save_file_name)
+
         plt.show()
 
     @staticmethod
