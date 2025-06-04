@@ -635,7 +635,7 @@ class Game:
 
 
     def plot_stationary_distribution_per_pop(self, stationary_distribution, player:int, states: list[tuple[int]], actions_symbols: list[str], title: str, ylabel=None, save_file_name=None):
-        def cooperator_defector_fraction(stationary_distribution, states_string, actions_symbols, player):
+        def compute_strat_fraction(stationary_distribution, states_string, actions_symbols, player):
             strategies_fractionss = np.zeros(len(actions_symbols[player]))
             for i, st in enumerate(states_string):
                 strategies_fractionss[actions_symbols[player].index(st[player])] += stationary_distribution[i]
@@ -650,13 +650,86 @@ class Game:
             states_string.append(state_string)
         colors = ["Red", "Blue", "Green", "Yellow"]
         fig, ax = plt.subplots(figsize=(5, 4))
-        strategies_fractionss = cooperator_defector_fraction(stationary_distribution, states_string, actions_symbols, player=player)
+        strategies_fractionss = compute_strat_fraction(stationary_distribution, states_string, actions_symbols, player=player)
         ax.bar(range(len(actions_symbols[player])), strategies_fractionss, color=colors[0:len(actions_symbols[player])])
         ax.set_xticks(range(len(actions_symbols[player])))
         ax.set_xticklabels(self._actions_names[player])
         ax.set_ylim([0, 1])
         ax.set_ylabel(ylabel)
         ax.set_title(title)
+        plt.tight_layout()
+        if save_file_name is not None:
+            plt.savefig(save_file_name)
+
+        plt.show()
+
+    def plot_stationary_distributions_all_pop(self, stationary_distributions, green, red, states, actions_symbols,
+                                              save_file_name=None):
+        stationary_distributions = np.array(stationary_distributions)
+
+        states_symb = []
+        for j, state in enumerate(states):
+            states_symb.append("")
+            for i, s in enumerate(state):
+                states_symb[j] += actions_symbols[i][s]
+
+        green_ind = []
+        for g in green:
+            green_ind.append(states.index(g))
+
+        red_ind = []
+        for r in red:
+            red_ind.append(states.index(r))
+
+        green_plots = stationary_distributions[:, green_ind]
+        red_plots = stationary_distributions[:, red_ind]
+        x_labels = [f"Param {i}" for i in range(len(green_plots))]
+
+        # Plot each column
+        for col_idx in range(green_plots.shape[1]):
+            plt.plot(x_labels, green_plots[:, col_idx], label=f"{states_symb[green_ind[col_idx]]}", color="green")
+
+        for col_idx in range(red_plots.shape[1]):
+            plt.plot(x_labels, red_plots[:, col_idx], label=f"{states_symb[red_ind[col_idx]]}", color="red")
+
+        plt.xlabel("Params")
+        plt.ylabel("Fractions")
+        plt.title("Stationary Distribution All Populations")
+        plt.legend()
+        plt.grid(True)
+        plt.ylim(0, 1)
+        plt.tight_layout()
+        if save_file_name is not None:
+            plt.savefig(save_file_name)
+        plt.show()
+
+    def plot_stationary_distributions_per_pop(self, stationary_distributions, states, actions_symbols, actions_names, players_names, player, save_file_name=None):
+        stationary_distributions = np.array(stationary_distributions)
+
+        states_symb = []
+        for j, state in enumerate(states):
+            states_symb.append("")
+            for i, s in enumerate(state):
+                states_symb[j] += actions_symbols[i][s]
+
+        strategies_fractionss = np.zeros((stationary_distributions.shape[0], len(actions_symbols[player])))
+        for i in range(stationary_distributions.shape[0]):
+            stationary_distribution = stationary_distributions[i]
+            for j, st in enumerate(states_symb):
+                strategies_fractionss[i, actions_symbols[player].index(st[player])] += stationary_distribution[j]
+
+        x_labels = [f"Param {i}" for i in range(strategies_fractionss.shape[0])]
+        colors = ["red", "green", "red", "green"]
+        for col_idx in range(strategies_fractionss.shape[1]):
+            plt.plot(x_labels, strategies_fractionss[:, col_idx], label=f"{actions_names[player][col_idx]}",
+                     color=colors[col_idx])
+
+        plt.xlabel("Params")
+        plt.ylabel("Fractions")
+        plt.title(f"Stationary Distribution {players_names[player]}")
+        plt.legend()
+        plt.ylim(0, 1)
+        plt.grid(True)
         plt.tight_layout()
         if save_file_name is not None:
             plt.savefig(save_file_name)
