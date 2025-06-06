@@ -663,7 +663,7 @@ class Game:
 
         plt.show()
 
-    def plot_stationary_distributions_all_pop(self, stationary_distributions, green, red, states, actions_symbols,
+    def plot_stationary_distributions_all_pop(self, stationary_distributions, states, plot_states, actions_symbols,
                                               save_file_name=None):
         stationary_distributions = np.array(stationary_distributions)
 
@@ -673,28 +673,20 @@ class Game:
             for i, s in enumerate(state):
                 states_symb[j] += actions_symbols[i][s]
 
-        green_ind = []
-        for g in green:
-            green_ind.append(states.index(g))
+        ind = []
+        for s in plot_states:
+            ind.append(states.index(s))
 
-        red_ind = []
-        for r in red:
-            red_ind.append(states.index(r))
-
-        green_plots = stationary_distributions[:, green_ind]
-        red_plots = stationary_distributions[:, red_ind]
-        x_labels = [f"Param {i}" for i in range(len(green_plots))]
+        plots = stationary_distributions[:, ind]
+        x_labels = [f"Param {i}" for i in range(len(plots))]
 
         # Plot each column
-        for col_idx in range(green_plots.shape[1]):
-            plt.plot(x_labels, green_plots[:, col_idx], label=f"{states_symb[green_ind[col_idx]]}", color="green")
-
-        for col_idx in range(red_plots.shape[1]):
-            plt.plot(x_labels, red_plots[:, col_idx], label=f"{states_symb[red_ind[col_idx]]}", color="red")
+        for col_idx in range(plots.shape[1]):
+            plt.plot(x_labels, plots[:, col_idx], label=f"{states_symb[ind[col_idx]]}")
 
         plt.xlabel("Params")
         plt.ylabel("Fractions")
-        plt.title("Stationary Distribution All Populations")
+        plt.title("Stationary Distributions All Populations")
         plt.legend()
         plt.grid(True)
         plt.ylim(0, 1)
@@ -719,14 +711,12 @@ class Game:
                 strategies_fractionss[i, actions_symbols[player].index(st[player])] += stationary_distribution[j]
 
         x_labels = [f"Param {i}" for i in range(strategies_fractionss.shape[0])]
-        colors = ["red", "green", "red", "green"]
         for col_idx in range(strategies_fractionss.shape[1]):
-            plt.plot(x_labels, strategies_fractionss[:, col_idx], label=f"{actions_names[player][col_idx]}",
-                     color=colors[col_idx])
+            plt.plot(x_labels, strategies_fractionss[:, col_idx], label=f"{actions_names[player][col_idx]}")
 
         plt.xlabel("Params")
         plt.ylabel("Fractions")
-        plt.title(f"Stationary Distribution {players_names[player]}")
+        plt.title(f"Stationary Distributions {players_names[player]}")
         plt.legend()
         plt.ylim(0, 1)
         plt.grid(True)
