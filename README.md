@@ -20,6 +20,7 @@ A Python package and collection of Jupyter notebooks for simulating evolutionary
 ```plain
 ├── notebooks/                      # Jupyter notebooks for EGT simulations
 │   ├── youtube_evol_dyn.ipynb      # Simulations and unused code (Moran process, gradient of selection, replicator dynamics)
+│   ├── paradigm_shift.ipynb        # Replication of the reference paper used in the thesis on the paradigm shift
 │   ├── models_1.ipynb              # First class of models (View Count)
 │   ├── models_2.ipynb              # Second class of models (Watch Time)
 │   └── models_3.ipynb              # Third class of models (Valued Watch Time)

@@ -190,6 +190,7 @@ class Game:
                                                     Ps_fracs)
 
                 m[i, j] = fixation_prob / self._n
+
         for i in range(len(m)):
             s = 0
             for j in range(len(m)):
@@ -240,7 +241,7 @@ class Game:
             for pred in G.predecessors(node):
                 edge_data = G.get_edge_data(pred, node)
                 if edge_data is not None and "weight" in edge_data:
-                    total_in += edge_data["weight"]
+                    total_in += edge_data["weight"] / 4
             in_weight_sum[node] = total_in
 
         # 3) Scale node sizes
@@ -306,7 +307,8 @@ class Game:
             pos,
             edge_labels=edge_labels,
             font_color='red',
-            label_pos=0.2,
+            label_pos=0.4,
+            font_size=15
         )
 
         # Draw labels
