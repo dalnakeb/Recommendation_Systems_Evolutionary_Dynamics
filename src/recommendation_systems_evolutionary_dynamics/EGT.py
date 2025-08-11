@@ -308,11 +308,20 @@ class Game:
             edge_labels=edge_labels,
             font_color='red',
             label_pos=0.4,
-            font_size=15
+            font_size=22
         )
 
-        # Draw labels
-        nx.draw_networkx_labels(G, pos, font_size=10)
+        for node, (x, y), c in zip(G.nodes(), pos.values(), node_colors):
+            font_color = "white" if c > 0.5 else "black"
+            plt.text(
+                x, y,
+                s=node,
+                fontsize=24,  # change font size here
+                color=font_color,  # contrast font color
+                horizontalalignment='center',
+                verticalalignment='center',
+                zorder=10
+            )
 
         plt.axis("off")
         if save_file_name is not None:
@@ -444,6 +453,8 @@ class Game:
             connectionstyle='arc3,rad=0',
             node_size=avg_node_size  # scalar value
         )
+
+
         nx.draw_networkx_labels(H, pos, font_size=10)
 
         plt.axis("off")
@@ -591,16 +602,12 @@ class Game:
 
     @staticmethod
     def compute_stationary_distribution(matrix):
-        # Compute eigenvalues and right eigenvectors of the transpose of P.
         eigenvalues, eigenvectors = np.linalg.eig(matrix.T)
 
-        # Find the index of the eigenvalue closest to 1.
         idx = np.argmin(np.abs(eigenvalues - 1))
 
-        # Extract the corresponding eigenvector and take the real part (if it is complex)
         stationary = eigenvectors[:, idx].real
 
-        # Normalize the eigenvector so that the sum of its components equals 1.
         stationary = stationary / np.sum(stationary)
 
         return stationary
@@ -624,6 +631,7 @@ class Game:
                 colors.append("gray")
         x_positions = np.arange(len(states_string))
         ax.bar(x_positions, stationary_distribution, color=colors)
+        print(states_string, stationary_distribution)
         ax.set_xticks(x_positions)
         ax.set_xticklabels(states_string, rotation=45)
         ax.set_ylim([0, 1])
@@ -684,14 +692,18 @@ class Game:
 
         # Plot each column
         for col_idx in range(plots.shape[1]):
-            plt.plot(x_labels, plots[:, col_idx], label=f"{states_symb[ind[col_idx]]}")
+            plt.scatter(x_labels, plots[:, col_idx], label=f"{states_symb[ind[col_idx]]}")
 
-        plt.xlabel("Params")
-        plt.ylabel("Fractions")
-        plt.title("Stationary Distributions All Populations")
-        plt.legend()
+        plt.xlabel("Params", fontsize=16)
+        plt.ylabel("Fractions", fontsize=16)
+        plt.title("Stationary Distributions All Populations", fontsize=18)
+        plt.legend(fontsize=14)
         plt.grid(True)
         plt.ylim(0, 1)
+
+        # Increase tick label size
+        plt.xticks(fontsize=14)
+        plt.yticks(fontsize=14)
         plt.tight_layout()
         if save_file_name is not None:
             plt.savefig(save_file_name)
@@ -714,12 +726,16 @@ class Game:
 
         x_labels = [f"Param {i}" for i in range(strategies_fractionss.shape[0])]
         for col_idx in range(strategies_fractionss.shape[1]):
-            plt.plot(x_labels, strategies_fractionss[:, col_idx], label=f"{actions_names[player][col_idx]}")
+            plt.scatter(x_labels, strategies_fractionss[:, col_idx], label=f"{actions_names[player][col_idx]}")
 
-        plt.xlabel("Params")
-        plt.ylabel("Fractions")
-        plt.title(f"Stationary Distributions {players_names[player]}")
-        plt.legend()
+        plt.xlabel("Params", fontsize=16)
+        plt.ylabel("Fractions", fontsize=16)
+        plt.title(f"Stationary Distributions {players_names[player]}", fontsize=18)
+        plt.legend(fontsize=14)
+
+        plt.xticks(fontsize=14)
+        plt.yticks(fontsize=14)
+
         plt.ylim(0, 1)
         plt.grid(True)
         plt.tight_layout()
