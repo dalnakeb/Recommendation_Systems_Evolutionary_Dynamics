@@ -308,7 +308,7 @@ class Game:
             edge_labels=edge_labels,
             font_color='red',
             label_pos=0.4,
-            font_size=22
+            font_size=20
         )
 
         for node, (x, y), c in zip(G.nodes(), pos.values(), node_colors):
@@ -316,7 +316,7 @@ class Game:
             plt.text(
                 x, y,
                 s=node,
-                fontsize=24,  # change font size here
+                fontsize=28,  # change font size here
                 color=font_color,  # contrast font color
                 horizontalalignment='center',
                 verticalalignment='center',
